@@ -5,6 +5,7 @@ require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/user/class/user.class.php';
+require_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
 
 $syncodooRipcordPath = DOL_DOCUMENT_ROOT.'/custom/syncodoo/lib/ripcord/ripcord.php';
 if (is_readable($syncodooRipcordPath)) {
@@ -635,6 +636,145 @@ class SyncOdoo
         return substr((string) $value, 0, 10);
     }
 
+    private function isInvoiceAttachmentImportEnabled()
+    {
+        global $conf;
+
+        return ((int) ($conf->global->SYNCODOO_IMPORT_INVOICE_FILE ?? 0)) === 1;
+    }
+
+    private function getDolibarrInvoiceUploadDir($dolInvoiceType, $dolInvoiceId, $dolInvoiceRef)
+    {
+        global $conf;
+
+        $ref = dol_sanitizeFileName((string) $dolInvoiceRef);
+        if ($ref === '') {
+            return '';
+        }
+
+        if ((string) $dolInvoiceType === 'supplier') {
+            $object = new FactureFournisseur($this->db);
+            $object->id = (int) $dolInvoiceId;
+            $object->ref = $ref;
+            $baseDir = !empty($conf->fournisseur->facture->multidir_output[$conf->entity])
+                ? $conf->fournisseur->facture->multidir_output[$conf->entity]
+                : $conf->fournisseur->facture->dir_output;
+
+            return rtrim((string) $baseDir, '/').'/'.get_exdir($object->id, 2, 0, 0, $object, 'invoice_supplier').$ref;
+        }
+
+        $baseDir = !empty($conf->facture->multidir_output[$conf->entity])
+            ? $conf->facture->multidir_output[$conf->entity]
+            : $conf->facture->dir_output;
+
+        return rtrim((string) $baseDir, '/').'/'.$ref;
+    }
+
+    private function getOdooInvoiceAttachmentRecord(array $odooInv)
+    {
+        $odooId = (int) ($odooInv['id'] ?? 0);
+        if ($odooId <= 0) {
+            return null;
+        }
+
+        $attachments = $this->odooCallPublic(
+            'ir.attachment',
+            'search_read',
+            [
+                [
+                    ['res_model', '=', 'account.move'],
+                    ['res_id', '=', $odooId],
+                    ['type', '=', 'binary'],
+                ],
+                ['id', 'name', 'datas_fname', 'mimetype', 'datas'],
+            ]
+        );
+
+        if (empty($attachments) || !is_array($attachments)) {
+            return null;
+        }
+
+        $preferred = null;
+        foreach ($attachments as $attachment) {
+            $mimetype = strtolower(trim((string) ($attachment['mimetype'] ?? '')));
+            $filename = strtolower(trim((string) (($attachment['datas_fname'] ?? '') ?: ($attachment['name'] ?? ''))));
+            $isPdf = ($mimetype === 'application/pdf' || substr($filename, -4) === '.pdf');
+
+            if ($isPdf) {
+                $preferred = $attachment;
+                break;
+            }
+
+            if ($preferred === null) {
+                $preferred = $attachment;
+            }
+        }
+
+        if (empty($preferred)) {
+            return null;
+        }
+
+        if (empty($preferred['datas'])) {
+            $reloaded = $this->odooCallPublic(
+                'ir.attachment',
+                'read',
+                [[(int) ($preferred['id'] ?? 0)], ['id', 'name', 'datas_fname', 'mimetype', 'datas']]
+            );
+            if (!empty($reloaded[0])) {
+                $preferred = $reloaded[0];
+            }
+        }
+
+        return !empty($preferred['datas']) ? $preferred : null;
+    }
+
+    private function importOdooInvoiceAttachmentToDolibarr(array $odooInv, $dolInvoiceId, $dolInvoiceRef, $dolInvoiceType)
+    {
+        if (!$this->isInvoiceAttachmentImportEnabled()) {
+            return;
+        }
+
+        $attachment = $this->getOdooInvoiceAttachmentRecord($odooInv);
+        if (empty($attachment)) {
+            return;
+        }
+
+        $dir = $this->getDolibarrInvoiceUploadDir($dolInvoiceType, (int) $dolInvoiceId, (string) $dolInvoiceRef);
+        if ($dir === '') {
+            throw new Exception('Répertoire de documents facture introuvable');
+        }
+
+        if (dol_mkdir($dir) < 0 && !is_dir($dir)) {
+            throw new Exception('Création du répertoire de documents impossible: '.$dir);
+        }
+
+        $baseName = trim((string) (($attachment['datas_fname'] ?? '') ?: ($attachment['name'] ?? '')));
+        if ($baseName === '') {
+            $baseName = 'odoo-invoice-attachment-'.$dolInvoiceRef.'.pdf';
+        }
+
+        $baseName = dol_sanitizeFileName($baseName);
+        if ($baseName === '') {
+            $baseName = 'odoo-invoice-attachment.pdf';
+        }
+
+        $content = base64_decode((string) $attachment['datas'], true);
+        if ($content === false) {
+            throw new Exception('Contenu de pièce jointe Odoo invalide (base64)');
+        }
+
+        $targetPath = $dir.'/'.$baseName;
+        if (file_exists($targetPath)) {
+            $targetPath = $dir.'/'.time().'_'.$baseName;
+        }
+
+        if (file_put_contents($targetPath, $content) === false) {
+            throw new Exception('Écriture du fichier importé impossible: '.$targetPath);
+        }
+
+        $this->log('INFO', 'sync', 'invoice', (string) $dolInvoiceRef, 'Pièce jointe Odoo importée: '.basename($targetPath));
+    }
+
     private function createDolibarrInvoiceFromOdoo(array $odooInv, $requestedRef)
     {
         $user = $this->getExecutionUser();
@@ -682,6 +822,12 @@ class SyncOdoo
             if ($lineRes <= 0) {
                 throw new Exception('Erreur ajout ligne facture fournisseur Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
             }
+
+            try {
+                $this->importOdooInvoiceAttachmentToDolibarr($odooInv, (int) $invoiceId, (string) ($invoice->ref ?? $displayRef), 'supplier');
+            } catch (Throwable $e) {
+                $this->log('WARNING', 'sync', 'invoice', $displayRef, 'Import pièce jointe Odoo ignoré: '.$e->getMessage());
+            }
         } else {
             $invoice = new Facture($this->db);
             $invoice->socid = $socid;
@@ -697,6 +843,12 @@ class SyncOdoo
             $lineRes = $invoice->addline($line['desc'], $line['unit_price'], $line['qty'], $line['vat']);
             if ($lineRes <= 0) {
                 throw new Exception('Erreur ajout ligne facture client Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
+            }
+
+            try {
+                $this->importOdooInvoiceAttachmentToDolibarr($odooInv, (int) $invoiceId, (string) ($invoice->ref ?? $displayRef), 'customer');
+            } catch (Throwable $e) {
+                $this->log('WARNING', 'sync', 'invoice', $displayRef, 'Import pièce jointe Odoo ignoré: '.$e->getMessage());
             }
         }
 
@@ -1466,17 +1618,29 @@ class SyncOdoo
         $dolByRef = [];
 
         foreach ($odo as $odooInvoice) {
+            $invoiceType = (string) ($odooInvoice['type'] ?? '');
             foreach (($odooInvoice['match_refs'] ?? []) as $matchRef) {
-                if (!isset($odoByRef[$matchRef])) {
-                    $odoByRef[$matchRef] = $odooInvoice;
+                $normalizedRef = $this->normalizeLookupValue($matchRef);
+                if ($normalizedRef === '') {
+                    continue;
+                }
+                $typedKey = $invoiceType.'::'.$normalizedRef;
+                if (!isset($odoByRef[$typedKey])) {
+                    $odoByRef[$typedKey] = $odooInvoice;
                 }
             }
         }
 
         foreach ($dol as $dolInvoice) {
+            $invoiceType = (string) ($dolInvoice['type'] ?? '');
             foreach (($dolInvoice['match_refs'] ?? []) as $matchRef) {
-                if (!isset($dolByRef[$matchRef])) {
-                    $dolByRef[$matchRef] = $dolInvoice;
+                $normalizedRef = $this->normalizeLookupValue($matchRef);
+                if ($normalizedRef === '') {
+                    continue;
+                }
+                $typedKey = $invoiceType.'::'.$normalizedRef;
+                if (!isset($dolByRef[$typedKey])) {
+                    $dolByRef[$typedKey] = $dolInvoice;
                 }
             }
         }
@@ -1491,9 +1655,15 @@ class SyncOdoo
 
         foreach ($dol as $d) {
             $matchedOdoo = null;
+            $invoiceType = (string) ($d['type'] ?? '');
             foreach (($d['match_refs'] ?? []) as $matchRef) {
-                if (isset($odoByRef[$matchRef])) {
-                    $matchedOdoo = $odoByRef[$matchRef];
+                $normalizedRef = $this->normalizeLookupValue($matchRef);
+                if ($normalizedRef === '') {
+                    continue;
+                }
+                $typedKey = $invoiceType.'::'.$normalizedRef;
+                if (isset($odoByRef[$typedKey])) {
+                    $matchedOdoo = $odoByRef[$typedKey];
                     break;
                 }
             }
@@ -1508,9 +1678,15 @@ class SyncOdoo
         foreach ($odo as $o) {
             $odooId = (int) ($o['_id'] ?? 0);
             $matchedDol = null;
+            $invoiceType = (string) ($o['type'] ?? '');
             foreach (($o['match_refs'] ?? []) as $matchRef) {
-                if (isset($dolByRef[$matchRef])) {
-                    $matchedDol = $dolByRef[$matchRef];
+                $normalizedRef = $this->normalizeLookupValue($matchRef);
+                if ($normalizedRef === '') {
+                    continue;
+                }
+                $typedKey = $invoiceType.'::'.$normalizedRef;
+                if (isset($dolByRef[$typedKey])) {
+                    $matchedDol = $dolByRef[$typedKey];
                     break;
                 }
             }
@@ -1522,9 +1698,15 @@ class SyncOdoo
 
         foreach ($dol as $d) {
             $o = null;
+            $invoiceType = (string) ($d['type'] ?? '');
             foreach (($d['match_refs'] ?? []) as $matchRef) {
-                if (isset($odoByRef[$matchRef])) {
-                    $o = $odoByRef[$matchRef];
+                $normalizedRef = $this->normalizeLookupValue($matchRef);
+                if ($normalizedRef === '') {
+                    continue;
+                }
+                $typedKey = $invoiceType.'::'.$normalizedRef;
+                if (isset($odoByRef[$typedKey])) {
+                    $o = $odoByRef[$typedKey];
                     break;
                 }
             }
@@ -2241,12 +2423,14 @@ class SyncOdoo
             throw new Exception("Facture Odoo $ref introuvable");
         }
 
-        // Check if invoice exists in Dolibarr by ref or external reference fields
+        // Check existence in the matching Dolibarr invoice table only
         $safeRef = $this->db->escape($ref);
-        $sql = "SELECT rowid, total_ttc, 'customer' as type FROM ".MAIN_DB_PREFIX."facture WHERE ref = '".$safeRef."' OR ref_client = '".$safeRef."' ";
-        $sql .= "UNION ALL ";
-        $sql .= "SELECT rowid, total_ttc, 'supplier' as type FROM ".MAIN_DB_PREFIX."facture_fourn WHERE ref = '".$safeRef."' OR ref_supplier = '".$safeRef."' ";
-        $sql .= "LIMIT 1";
+        $moveType = (string) ($odoo_inv['move_type'] ?? 'out_invoice');
+        if ($moveType === 'in_invoice') {
+            $sql = "SELECT rowid, total_ttc, 'supplier' as type FROM ".MAIN_DB_PREFIX."facture_fourn WHERE ref = '".$safeRef."' OR ref_supplier = '".$safeRef."' LIMIT 1";
+        } else {
+            $sql = "SELECT rowid, total_ttc, 'customer' as type FROM ".MAIN_DB_PREFIX."facture WHERE ref = '".$safeRef."' OR ref_client = '".$safeRef."' LIMIT 1";
+        }
         $resql = $this->db->query($sql);
         
         if (!$resql) {

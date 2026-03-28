@@ -1121,7 +1121,6 @@ if ($showInvoices && !empty($divergences['invoices_only_doli'])) {
         renderInvoiceSection(syncodooText('📦 Factures fournisseurs | uniquement dans Dolibarr', '📦 Facturen leveranciers | alleen in Dolibarr'), 'supplier', 'dolibarr', $supplier_invoices);
     }
 }
-    print '<span style="color:#6c757d">('.count($vatChecks['missing_country']).' '.syncodooText('element(s)', 'item(s)').')</span>';
 
 // ── Relatie : alleen in Odoo ──────────────────────────────
 if ($showThirdparties && !empty($divergences['tiers_only_odoo'])) {
@@ -1343,21 +1342,12 @@ function renderInvoiceSection(string $title, string $invoice_type, string $side,
     print '<div style="overflow-x:auto">';
     print '<table class="noborder" style="width:100%;margin:0;border-collapse:collapse">';
     print '<thead><tr class="liste_titre">';
-    if ($side === 'odoo') {
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('R&eacute;f&eacute;rence', 'Referentie').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Partenaire', 'Relatie').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Date', 'Datum').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Montants HTVA / TVA / TVAC', 'Bedragen excl. / btw / incl.').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Statut', 'Status').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6;min-width:200px">'.syncodooText('Action', 'Actie').'</th>';
-    } else {
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('R&eacute;f&eacute;rence', 'Referentie').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Partenaire', 'Relatie').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Date', 'Datum').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Montants HTVA / TVA / TVAC', 'Bedragen excl. / btw / incl.').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Statut', 'Status').'</th>';
-        print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6;min-width:200px">'.syncodooText('Action', 'Actie').'</th>';
-    }
+    print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('R&eacute;f&eacute;rence', 'Referentie').'</th>';
+    print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Partenaire', 'Relatie').'</th>';
+    print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Date', 'Datum').'</th>';
+    print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Montants HTVA / TVA / TVAC', 'Bedragen excl. / btw / incl.').'</th>';
+    print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6">'.syncodooText('Statut', 'Status').'</th>';
+    print '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid #dee2e6;min-width:200px">'.syncodooText('Action', 'Actie').'</th>';
     print '</tr></thead>';
     print '<tbody>';
 

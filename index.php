@@ -146,17 +146,10 @@ if ($tab === 'dashboard') {
     print '</div>';
 
     print '<div style="border:1px solid #e1e7ef;border-radius:8px;padding:14px;background:#fff;margin:0 0 12px 0;line-height:1.5">';
-    print '<p style="margin:0 0 8px 0"><strong>SyncOdoo est un module Dolibarr de synchronisation bidirectionnelle entre Dolibarr et Odoo.</strong> Il couvre surtout les tiers, les factures clients et les factures fournisseurs, avec une logique orientée contrôle utilisateur, diagnostic et résolution manuelle des divergences.</p>';
-    print '<p style="margin:0 0 8px 0"><strong>SyncOdoo is een Dolibarr-module voor bidirectionele synchronisatie tussen Dolibarr en Odoo.</strong> Het omvat voornamelijk relaties, klantfacturen en leveranciersfacturen, met een logica gericht op gebruikerscontrole, diagnostiek en handmatige oplossing van verschillen.</p>';
-    print '<p style="margin:0 0 6px 0"><strong>Version / Versie :</strong> 0.1.0 (FR / NL)</p>';
-    print '<p style="margin:0 0 6px 0"><strong>Statut / Status :</strong> expérimental / experimenteel</p>';
-    print '<p style="margin:0"><em>Il est possible de changer de langue sur toutes les pages du module. / Het is mogelijk om op alle pagina\'s van de module van taal te wisselen.</em></p>';
-    print '</div>';
-
-    print '<div style="margin:0 0 14px 0;text-align:center">';
-    print '<span style="color:#6c757d;margin-right:8px;font-size:0.95em">'.syncodooText('Choix de langue :', 'Taalkeuze:').'</span>';
-    print '<a href="'.$_syncoBase.'&set_lang=fr" style="display:inline-block;padding:7px 16px;text-decoration:none;border-radius:6px 0 0 6px;border:1px solid #c8ced6;font-size:1.02em;'.($_syncoActiveLang === 'fr' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#ffffff;color:#495057').'">FR</a>';
-    print '<a href="'.$_syncoBase.'&set_lang=nl" style="display:inline-block;padding:7px 16px;text-decoration:none;border-radius:0 6px 6px 0;border:1px solid #c8ced6;border-left:none;font-size:1.02em;'.($_syncoActiveLang === 'nl' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#ffffff;color:#495057').'">NL</a>';
+    print '<p style="margin:0 0 8px 0"><strong>'.syncodooText('SyncOdoo synchronise Dolibarr et Odoo dans les deux sens.', 'SyncOdoo synchroniseert Dolibarr en Odoo in beide richtingen.').'</strong></p>';
+    print '<p style="margin:0 0 8px 0">'.syncodooText('Le module couvre surtout les tiers, les factures clients et les factures fournisseurs avec une approche orientée controle utilisateur.', 'De module behandelt vooral relaties, verkoopfacturen en aankoopfacturen met focus op gebruikerscontrole.').'</p>';
+    print '<p style="margin:0 0 6px 0"><strong>'.syncodooText('Version', 'Versie').' :</strong> 0.1.0</p>';
+    print '<p style="margin:0"><strong>'.syncodooText('Statut', 'Status').' :</strong> '.syncodooText('experimental', 'experimenteel').'</p>';
     print '</div>';
 
     if ($disabled) {

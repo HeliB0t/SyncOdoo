@@ -55,6 +55,7 @@ if ($action === 'save') {
         'SYNCODOO_DOLI_APIKEY' => GETPOST('SYNCODOO_DOLI_APIKEY', 'restricthtml'),
         'SYNCODOO_LIMIT'       => (int)GETPOST('SYNCODOO_LIMIT',  'int'),
         'SYNCODOO_LOG_LEVEL'   => GETPOST('SYNCODOO_LOG_LEVEL',   'alpha'),
+        'SYNCODOO_IMPORT_INVOICE_FILE' => (int) GETPOST('SYNCODOO_IMPORT_INVOICE_FILE', 'int'),
     ];
 
     foreach ($fields as $const => $val) {
@@ -157,7 +158,7 @@ print '<input type="hidden" name="action" value="save">';
 // ── Section Odoo ─────────────────────────────────────────
 print '<table class="noborder centpercent"><tbody>';
 
-print '<tr class="liste_titre"><th colspan="2">'.syncodooText('Connexion Odoo (XML-RPC)', 'Odoo-verbinding (XML-RPC)').'</th></tr>';
+print '<tr class="liste_titre"><th colspan="2">'.syncodooText('Connexion Odoo', 'Odoo-verbinding').'</th></tr>';
 
 $fields = [
     'SYNCODOO_ODOO_URL' => [syncodooText('URL de base Odoo', 'Odoo basis-URL'), 'text', 'https://mondomaine.odoo.com', false],
@@ -232,6 +233,12 @@ foreach (['DEBUG', 'INFO', 'WARNING', 'ERROR'] as $lv) {
     print '<option value="'.$lv.'"'.$sel.'>'.$lv.'</option>';
 }
 print '</select></td></tr>';
+
+$importInvoiceFile = (int) ($conf->global->SYNCODOO_IMPORT_INVOICE_FILE ?? 0);
+print '<tr><td>'.syncodooText('Importer le fichier de facture Odoo', 'Odoo-factuurbestand importeren').'</td>';
+print '<td><label><input type="checkbox" name="SYNCODOO_IMPORT_INVOICE_FILE" value="1"'.($importInvoiceFile ? ' checked' : '').'> ';
+print syncodooText('Joindre automatiquement le fichier de facture (PDF en priorite) lors de la creation dans Dolibarr.', 'Factuurbijlage automatisch toevoegen (PDF heeft voorrang) bij creatie in Dolibarr.');
+print '</label></td></tr>';
 
 print '</tbody></table>';
 print '<br><button type="submit" class="butAction">'.syncodooText('Enregistrer', 'Opslaan').'</button>';

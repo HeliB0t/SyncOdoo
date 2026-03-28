@@ -9,16 +9,10 @@ English version further below on this page.
 ---
 
 ## Français
-tout traduire pour que les utilisateur
+
 ### Présentation
 
-SyncOdoo est un module Dolibarr de synchronisation bidirectionnelle entre Dolibarr et Odoo.
-Il couvre surtout les tiers, les factures clients et les factures fournisseurs, avec une logique orientée contrôle utilisateur, diagnostic et résolution manuelle des divergences.
-
-Version actuelle : 0.1.0
-Statut : expérimental
-
-Cette version est utilisable, mais elle ne couvre pas encore tous les cas fonctionnels possibles. Certaines actions doivent encore être confirmées manuellement et certains rapprochements complexes peuvent nécessiter une vérification avant validation.
+SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore tous les cas fonctionnels possibles. Certaines actions doivent encore être confirmées manuellement et certains rapprochements complexes peuvent nécessiter une vérification avant validation.
 
 ### Fonctions principales
 
@@ -34,6 +28,7 @@ Cette version est utilisable, mais elle ne couvre pas encore tous les cas foncti
 - Validation assistée des taux TVA détectés par pays
 - Proposition automatique de taux TVA proches avec présélection dans certains cas
 - Choix manuel de référence pour les factures fournisseurs divergentes
+- Import optionnel du fichier de facture Odoo (PDF en priorité) lors de la création dans Dolibarr
 
 ### Ce que le module sait faire aujourd'hui
 
@@ -101,6 +96,7 @@ Cette version est utilisable, mais elle ne couvre pas encore tous les cas foncti
 - Utilisateur Odoo
 - Mot de passe Odoo ou clé API Odoo
 - Clé API Dolibarr uniquement en secours si la clé utilisateur n'est pas détectée automatiquement
+- Option d'import du fichier de facture Odoo vers les documents Dolibarr (facultatif)
 
 #### Cas Odoo Online
 
@@ -235,6 +231,7 @@ Deze versie is bruikbaar, maar dekt nog niet alle functionele scenario's. Sommig
 - Begeleide validatie van btw-tarieven per land
 - Automatische voorstellen van nabije btw-tarieven
 - Manuele keuze van de referentie voor afwijkende aankoopfacturen
+- Optionele import van het Odoo-factuurbestand (PDF met prioriteit) bij creatie in Dolibarr
 
 ### Wat de module momenteel doet
 
@@ -302,6 +299,7 @@ Deze versie is bruikbaar, maar dekt nog niet alle functionele scenario's. Sommig
 - Odoo-gebruiker
 - Odoo-wachtwoord of Odoo API-sleutel
 - Dolibarr API-sleutel alleen als fallback wanneer geen gebruikerssleutel automatisch wordt gevonden
+- Optie om het Odoo-factuurbestand te importeren naar Dolibarr-documenten (optioneel)
 
 #### Odoo Online
 
@@ -391,6 +389,7 @@ This version is usable, but it does not yet cover every functional case. Some ac
 - Assisted VAT rate validation by country
 - Automatic suggestion of nearby VAT rates
 - Manual reference choice for divergent supplier invoices
+- Optional import of the Odoo invoice file (PDF first) when creating the invoice in Dolibarr
 
 ### What the module currently does
 
@@ -458,6 +457,7 @@ This version is usable, but it does not yet cover every functional case. Some ac
 - Odoo user
 - Odoo password or Odoo API key
 - Dolibarr API key only as a fallback if no user API key is automatically detected
+- Option to import the Odoo invoice file into Dolibarr documents (optional)
 
 #### Odoo Online
 
