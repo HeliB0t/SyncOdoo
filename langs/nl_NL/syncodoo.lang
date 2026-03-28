@@ -1,0 +1,24 @@
+# Language file — SyncOdoo — nl_NL
+
+Module500002Name = SyncOdoo
+Module500002Desc = Bidirectionele synchronisatie Dolibarr ↔ Odoo
+
+SyncOdoo               = Sync Odoo
+Journal                = Logboek
+Configuration          = Instellingen
+Divergences            = Divergenties
+LancerSync             = Synchronisatie starten
+ConfigSauvegardee      = Instellingen succesvol opgeslagen.
+SyncTerminee           = Synchronisatie voltooid.
+SyncErreur             = Er is een fout opgetreden tijdens de synchronisatie.
+GestionDivergences     = Beheer van divergenties
+AucuneDivergence       = Geen divergenties gedetecteerd — systemen zijn gesynchroniseerd.
+DivergencesDetectees   = divergentie(s) gedetecteerd.
+SupprimerOdoo          = Annuleren in Odoo
+SupprimerDolibarr      = Verwijderen uit Dolibarr
+ArchiverOdoo           = Archiveren in Odoo
+ArchiverDolibarr       = Archiveren in Dolibarr
+AppliquerSelection     = Selectie toepassen
+ToutSelectionner       = Alles selecteren
+ToutDeselectionner     = Alles deselecteren
+ActionIrreversible     = Deze actie is onomkeerbaar. Doorgaan?
