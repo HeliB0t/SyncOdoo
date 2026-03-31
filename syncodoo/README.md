@@ -1,6 +1,6 @@
 # Module SyncOdoo
 
-Version du module : 0.1.0
+Version du module : 0.2.0
 
 Version principale en français sur cette page.
 Nederlandse versie verderop op deze pagina.
@@ -12,7 +12,9 @@ English version further below on this page.
 
 ### Présentation
 
-SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore tous les cas fonctionnels possibles. Certaines actions doivent encore être confirmées manuellement et certains rapprochements complexes peuvent nécessiter une vérification avant validation.
+SyncOdoo est un module Dolibarr de synchronisation bidirectionnelle entre Dolibarr et Odoo. Il couvre principalement les tiers, les factures clients, les factures fournisseurs et, en option, les transactions bancaires.
+
+Consulter aussi le fichier `CHANGELOG.md` pour l'historique de version de la branche actuelle.
 
 ### Fonctions principales
 
@@ -29,6 +31,7 @@ SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore to
 - Proposition automatique de taux TVA proches avec présélection dans certains cas
 - Choix manuel de référence pour les factures fournisseurs divergentes
 - Import optionnel du fichier de facture Odoo (PDF en priorité) lors de la création dans Dolibarr
+- Synchronisation optionnelle des transactions bancaires entre un journal bancaire Odoo et un compte bancaire Dolibarr
 
 ### Ce que le module sait faire aujourd'hui
 
@@ -74,6 +77,15 @@ SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore to
 - Proposer automatiquement des approximations utiles comme 20.0, 20.5 ou 21.0
 - Présélectionner un taux proposé quand la valeur observée est suffisamment proche
 
+#### Transactions bancaires
+
+- Synchroniser les lignes de transactions bancaires entre Odoo et Dolibarr
+- Cibler un journal bancaire Odoo précis via son code, son nom ou son identifiant
+- Cibler un compte bancaire Dolibarr précis pour l'import et l'export
+- Eviter les doublons via une table de mapping interne au module
+- Mettre a jour prudemment les lignes deja synchronisees quand elles changent
+- Ignorer les lignes deja rapprochees quand une mise a jour automatique deviendrait risquee
+
 ### Utilisation
 
 #### Installation
@@ -100,6 +112,11 @@ SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore to
 - Mot de passe Odoo ou clé API Odoo
 - Clé API Dolibarr uniquement en secours si la clé utilisateur n'est pas détectée automatiquement
 - Option d'import du fichier de facture Odoo vers les documents Dolibarr (facultatif)
+- Activation de la synchronisation bancaire (facultatif)
+- Journal bancaire Odoo a synchroniser (code, nom ou identifiant)
+- Compte bancaire Dolibarr cible pour la synchronisation bancaire
+- Sens de synchronisation bancaire: Odoo vers Dolibarr, Dolibarr vers Odoo, ou bidirectionnel
+- Date de depart facultative pour limiter les transactions bancaires reprises
 
 #### Cas Odoo Online
 
@@ -146,12 +163,14 @@ php /var/www/html/dolibarr/htdocs/custom/syncodoo/tools/simulate_data.php --star
 
 ### Remarques importantes
 
-- Le module est en version 0.1.0, donc il doit être considéré comme en cours de stabilisation
+- Le module est en version 0.2.0, donc il doit être considéré comme en cours de stabilisation
 - La synchronisation automatique ne remplace pas encore un contrôle fonctionnel sur tous les cas métier
 - Les rapprochements de références entre Dolibarr et Odoo peuvent demander une vérification, surtout sur les factures fournisseurs
 - Les divergences TVA doivent être validées avec attention avant confirmation
 - Les montants de facture ne doivent pas être écrasés sans vérifier la cohérence comptable
 - Les actions manuelles depuis l'onglet Divergences restent le mode recommandé pour les cas ambigus
+- Pour la synchronisation bancaire, il est recommandé de commencer avec une date de depart recente afin d'eviter un import historique trop large
+- Les lignes bancaires deja rapprochees ne sont pas forcees en mise a jour automatique
 
 ### Prérequis techniques
 
@@ -243,8 +262,10 @@ paypal.me/HeliB0t
 SyncOdoo is een Dolibarr-module voor bidirectionele synchronisatie tussen Dolibarr en Odoo.
 De module behandelt vooral derden, verkoopfacturen en aankoopfacturen, met nadruk op gebruikerscontrole, diagnose en manuele oplossing van verschillen.
 
-Huidige versie : 0.1.0
+Huidige versie : 0.2.0
 Status : experimenteel
+
+Zie ook `CHANGELOG.md` voor de wijzigingen van deze versie.
 
 Deze versie is bruikbaar, maar dekt nog niet alle functionele scenario's. Sommige acties vereisen nog manuele bevestiging en bepaalde complexe matches moeten vooraf worden gecontroleerd.
 
@@ -354,7 +375,7 @@ Voorbeeld :
 
 ### Belangrijke opmerkingen
 
-- Versie 0.1.0 moet nog als niet volledig gestabiliseerd worden beschouwd
+- Versie 0.2.0 moet nog als niet volledig gestabiliseerd worden beschouwd
 - Automatische synchronisatie vervangt nog geen functionele controle in alle scenario's
 - Referentiematching tussen Dolibarr en Odoo kan extra controle vereisen, vooral voor aankoopfacturen
 - Btw-verschillen moeten zorgvuldig worden gevalideerd
@@ -413,8 +434,10 @@ paypal.me/HeliB0t
 SyncOdoo is a Dolibarr module for bidirectional synchronization between Dolibarr and Odoo.
 It mainly handles third parties, customer invoices, and supplier invoices, with a workflow focused on user control, diagnostics, and manual divergence resolution.
 
-Current version: 0.1.0
+Current version: 0.2.0
 Status: experimental
+
+See `CHANGELOG.md` for the version history of the current branch.
 
 This version is usable, but it does not yet cover every functional case. Some actions still require manual confirmation and some complex matches should be checked before validation.
 
@@ -524,7 +547,7 @@ Example:
 
 ### Important notes
 
-- Version 0.1.0 should still be considered not fully stabilized
+- Version 0.2.0 should still be considered not fully stabilized
 - Automatic synchronization does not yet replace business validation in every scenario
 - Reference matching between Dolibarr and Odoo may require extra review, especially for supplier invoices
 - VAT divergences should be checked carefully before confirmation

@@ -3,6 +3,7 @@
 require_once DOL_DOCUMENT_ROOT.'/core/class/commonobject.class.php';
 require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
 require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/user/class/user.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
@@ -118,6 +119,10 @@ class SyncOdoo
             'factures_crees_odoo' => 0,
             'factures_maj_odoo' => 0,
             'factures_crees_doli' => 0,
+            'transactions_bancaires_creees_odoo' => 0,
+            'transactions_bancaires_maj_odoo' => 0,
+            'transactions_bancaires_creees_doli' => 0,
+            'transactions_bancaires_maj_doli' => 0,
             'suppressions' => 0,
             'erreurs' => 0,
         ];
@@ -147,6 +152,248 @@ class SyncOdoo
         }
 
         return function_exists('mb_strtolower') ? mb_strtolower($value) : strtolower($value);
+    }
+
+    private function isBankSyncEnabled()
+    {
+        global $conf;
+
+        return ((int) ($conf->global->SYNCODOO_BANK_SYNC_ENABLED ?? 0)) === 1;
+    }
+
+    private function getBankSyncDirection()
+    {
+        global $conf;
+
+        $direction = trim((string) ($conf->global->SYNCODOO_BANK_SYNC_DIRECTION ?? 'both'));
+        if (!in_array($direction, ['odoo_to_dolibarr', 'dolibarr_to_odoo', 'both'], true)) {
+            return 'both';
+        }
+
+        return $direction;
+    }
+
+    private function getConfiguredOdooBankJournalSelector()
+    {
+        global $conf;
+
+        return trim((string) ($conf->global->SYNCODOO_ODOO_BANK_JOURNAL ?? ''));
+    }
+
+    private function getConfiguredDolibarrBankAccountId()
+    {
+        global $conf;
+
+        return (int) ($conf->global->SYNCODOO_DOLI_BANK_ACCOUNT_ID ?? 0);
+    }
+
+    private function getConfiguredBankSyncStartDate()
+    {
+        global $conf;
+
+        $value = trim((string) ($conf->global->SYNCODOO_BANK_SYNC_START_DATE ?? ''));
+        if ($value === '') {
+            return '';
+        }
+
+        $ts = strtotime($value);
+        if ($ts === false) {
+            return '';
+        }
+
+        return date('Y-m-d', $ts);
+    }
+
+    private function ensureBankSyncTableExists()
+    {
+        $sql = "CREATE TABLE IF NOT EXISTS ".MAIN_DB_PREFIX."syncodoo_bank_map (
+            rowid INT NOT NULL AUTO_INCREMENT,
+            datec DATETIME NOT NULL,
+            tms TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            odoo_transaction_id INT NULL DEFAULT NULL,
+            dolibarr_bank_line_id INT NULL DEFAULT NULL,
+            dolibarr_bank_account_id INT NULL DEFAULT NULL,
+            odoo_journal_id INT NULL DEFAULT NULL,
+            sync_direction VARCHAR(20) NOT NULL DEFAULT '',
+            odoo_write_date DATETIME NULL DEFAULT NULL,
+            PRIMARY KEY (rowid),
+            UNIQUE KEY uk_syncodoo_bank_map_odoo (odoo_transaction_id),
+            UNIQUE KEY uk_syncodoo_bank_map_doli (dolibarr_bank_line_id),
+            INDEX idx_syncodoo_bank_map_account (dolibarr_bank_account_id),
+            INDEX idx_syncodoo_bank_map_journal (odoo_journal_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+        $this->db->query($sql);
+    }
+
+    public function getDolibarrBankAccounts()
+    {
+        $accounts = [];
+        $sql = "SELECT rowid, ref, label, iban_prefix, currency_code, clos
+                FROM ".MAIN_DB_PREFIX."bank_account
+                WHERE entity IN (".getEntity('bank_account').")
+                ORDER BY clos ASC, label ASC, ref ASC";
+
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            return $accounts;
+        }
+
+        while ($obj = $this->db->fetch_object($resql)) {
+            $accounts[] = [
+                'id' => (int) ($obj->rowid ?? 0),
+                'ref' => (string) ($obj->ref ?? ''),
+                'label' => (string) ($obj->label ?? ''),
+                'iban' => (string) ($obj->iban_prefix ?? ''),
+                'currency_code' => (string) ($obj->currency_code ?? ''),
+                'closed' => (int) ($obj->clos ?? 0),
+            ];
+        }
+
+        return $accounts;
+    }
+
+    private function getDolibarrBankAccountObject($accountId)
+    {
+        $accountId = (int) $accountId;
+        if ($accountId <= 0) {
+            return null;
+        }
+
+        $account = new Account($this->db);
+        if ($account->fetch($accountId) <= 0) {
+            return null;
+        }
+
+        return $account;
+    }
+
+    private function getBankSyncMappingByOdooId($odooTransactionId)
+    {
+        $this->ensureBankSyncTableExists();
+
+        $odooTransactionId = (int) $odooTransactionId;
+        if ($odooTransactionId <= 0) {
+            return null;
+        }
+
+        $sql = "SELECT * FROM ".MAIN_DB_PREFIX."syncodoo_bank_map WHERE odoo_transaction_id = ".$odooTransactionId." LIMIT 1";
+        $resql = $this->db->query($sql);
+        if ($resql) {
+            $obj = $this->db->fetch_object($resql);
+            if ($obj) {
+                return [
+                    'rowid' => (int) ($obj->rowid ?? 0),
+                    'odoo_transaction_id' => (int) ($obj->odoo_transaction_id ?? 0),
+                    'dolibarr_bank_line_id' => (int) ($obj->dolibarr_bank_line_id ?? 0),
+                    'dolibarr_bank_account_id' => (int) ($obj->dolibarr_bank_account_id ?? 0),
+                    'odoo_journal_id' => (int) ($obj->odoo_journal_id ?? 0),
+                    'sync_direction' => (string) ($obj->sync_direction ?? ''),
+                    'odoo_write_date' => (string) ($obj->odoo_write_date ?? ''),
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    private function getBankSyncMappingByDolibarrLineId($bankLineId)
+    {
+        $this->ensureBankSyncTableExists();
+
+        $bankLineId = (int) $bankLineId;
+        if ($bankLineId <= 0) {
+            return null;
+        }
+
+        $sql = "SELECT * FROM ".MAIN_DB_PREFIX."syncodoo_bank_map WHERE dolibarr_bank_line_id = ".$bankLineId." LIMIT 1";
+        $resql = $this->db->query($sql);
+        if ($resql) {
+            $obj = $this->db->fetch_object($resql);
+            if ($obj) {
+                return [
+                    'rowid' => (int) ($obj->rowid ?? 0),
+                    'odoo_transaction_id' => (int) ($obj->odoo_transaction_id ?? 0),
+                    'dolibarr_bank_line_id' => (int) ($obj->dolibarr_bank_line_id ?? 0),
+                    'dolibarr_bank_account_id' => (int) ($obj->dolibarr_bank_account_id ?? 0),
+                    'odoo_journal_id' => (int) ($obj->odoo_journal_id ?? 0),
+                    'sync_direction' => (string) ($obj->sync_direction ?? ''),
+                    'odoo_write_date' => (string) ($obj->odoo_write_date ?? ''),
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    private function saveBankSyncMapping($odooTransactionId, $bankLineId, $bankAccountId, $odooJournalId, $direction, $odooWriteDate = '')
+    {
+        $this->ensureBankSyncTableExists();
+
+        $odooTransactionId = (int) $odooTransactionId;
+        $bankLineId = (int) $bankLineId;
+        $bankAccountId = (int) $bankAccountId;
+        $odooJournalId = (int) $odooJournalId;
+        $direction = trim((string) $direction);
+        $odooWriteDate = trim((string) $odooWriteDate);
+
+        $existing = null;
+        if ($odooTransactionId > 0) {
+            $existing = $this->getBankSyncMappingByOdooId($odooTransactionId);
+        }
+        if ($existing === null && $bankLineId > 0) {
+            $existing = $this->getBankSyncMappingByDolibarrLineId($bankLineId);
+        }
+
+        if ($existing) {
+            $sql = "UPDATE ".MAIN_DB_PREFIX."syncodoo_bank_map SET";
+            $sql .= " odoo_transaction_id = ".($odooTransactionId > 0 ? $odooTransactionId : 'NULL');
+            $sql .= ", dolibarr_bank_line_id = ".($bankLineId > 0 ? $bankLineId : 'NULL');
+            $sql .= ", dolibarr_bank_account_id = ".($bankAccountId > 0 ? $bankAccountId : 'NULL');
+            $sql .= ", odoo_journal_id = ".($odooJournalId > 0 ? $odooJournalId : 'NULL');
+            $sql .= ", sync_direction = '".$this->db->escape($direction)."'";
+            $sql .= ", odoo_write_date = ".($odooWriteDate !== '' ? "'".$this->db->escape($odooWriteDate)."'" : 'NULL');
+            $sql .= " WHERE rowid = ".((int) $existing['rowid']);
+            $this->db->query($sql);
+            return;
+        }
+
+        $sql = "INSERT INTO ".MAIN_DB_PREFIX."syncodoo_bank_map (datec, odoo_transaction_id, dolibarr_bank_line_id, dolibarr_bank_account_id, odoo_journal_id, sync_direction, odoo_write_date)
+                VALUES (NOW(), ".($odooTransactionId > 0 ? $odooTransactionId : 'NULL').", ".($bankLineId > 0 ? $bankLineId : 'NULL').", ".($bankAccountId > 0 ? $bankAccountId : 'NULL').", ".($odooJournalId > 0 ? $odooJournalId : 'NULL').", '".$this->db->escape($direction)."', ".($odooWriteDate !== '' ? "'".$this->db->escape($odooWriteDate)."'" : 'NULL').")";
+        $this->db->query($sql);
+    }
+
+    private function odooSearchReadAll($model, array $domain, array $fields, array $kwargs = [])
+    {
+        global $conf;
+
+        $limit = max(1, (int) ($kwargs['limit'] ?? ($conf->global->SYNCODOO_LIMIT ?? 500)));
+        $offset = 0;
+        $rows = [];
+
+        while (true) {
+            $batchKwargs = $kwargs;
+            $batchKwargs['fields'] = $fields;
+            $batchKwargs['limit'] = $limit;
+            $batchKwargs['offset'] = $offset;
+
+            $batch = $this->odooExecuteKw($model, 'search_read', [$domain], $batchKwargs);
+            if (empty($batch) || !is_array($batch)) {
+                break;
+            }
+
+            foreach ($batch as $row) {
+                $rows[] = $row;
+            }
+
+            if (count($batch) < $limit) {
+                break;
+            }
+
+            $offset += $limit;
+        }
+
+        return $rows;
     }
 
     private function findMatchingDolibarrThirdparty(array $odoo, ?array $doliData = null)
@@ -1846,6 +2093,13 @@ class SyncOdoo
                 }
             }
 
+            try {
+                $this->syncBankTransactions();
+            } catch (Throwable $e) {
+                $this->stats['erreurs']++;
+                $this->log('ERROR', 'sync', 'bank', 'transactions', $e->getMessage());
+            }
+
             $this->log('INFO', 'sync', 'system', 'manual', 'Synchronisation automatique exécutée.');
             return ($this->stats['erreurs'] === 0);
         } catch (Throwable $e) {
@@ -1897,6 +2151,402 @@ class SyncOdoo
     {
         $sql = "DELETE FROM ".MAIN_DB_PREFIX."syncodoo_log WHERE direction = 'divergence'";
         $this->db->query($sql);
+    }
+
+    private function resolveOdooBankJournal()
+    {
+        $selector = $this->getConfiguredOdooBankJournalSelector();
+        if ($selector === '') {
+            return null;
+        }
+
+        $fields = ['id', 'name', 'code', 'currency_id', 'bank_account_id'];
+
+        if (ctype_digit($selector)) {
+            $rows = $this->odooExecuteKw('account.journal', 'search_read', [[['id', '=', (int) $selector]]], ['fields' => $fields, 'limit' => 1]);
+            return !empty($rows[0]) ? $rows[0] : null;
+        }
+
+        $rows = $this->odooExecuteKw('account.journal', 'search_read', [[['code', '=', $selector]]], ['fields' => $fields, 'limit' => 1]);
+        if (!empty($rows[0])) {
+            return $rows[0];
+        }
+
+        $rows = $this->odooExecuteKw('account.journal', 'search_read', [[['name', '=', $selector]]], ['fields' => $fields, 'limit' => 1]);
+        if (!empty($rows[0])) {
+            return $rows[0];
+        }
+
+        return null;
+    }
+
+    private function serializeBankTransactionDetails($details)
+    {
+        if (is_string($details)) {
+            return trim($details);
+        }
+
+        if (is_array($details)) {
+            $encoded = json_encode($details, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return is_string($encoded) ? $encoded : '';
+        }
+
+        if ($details === null || $details === false) {
+            return '';
+        }
+
+        return trim((string) $details);
+    }
+
+    private function buildOdooBankTransactionLabel(array $row)
+    {
+        $parts = [];
+        foreach (['payment_ref', 'ref', 'name'] as $field) {
+            $value = trim((string) ($row[$field] ?? ''));
+            if ($value !== '' && !in_array($value, $parts, true)) {
+                $parts[] = $value;
+            }
+        }
+
+        $partnerLabel = trim((string) ($row['partner_id'][1] ?? ''));
+        if ($partnerLabel !== '' && !in_array($partnerLabel, $parts, true)) {
+            $parts[] = $partnerLabel;
+        }
+
+        $label = trim(implode(' | ', $parts));
+        if ($label === '') {
+            $label = 'Transaction Odoo #'.((int) ($row['id'] ?? 0));
+        }
+
+        return dol_string_nohtmltag(substr($label, 0, 250));
+    }
+
+    private function normalizeOdooBankTransaction(array $row)
+    {
+        return [
+            'id' => (int) ($row['id'] ?? 0),
+            'date' => trim((string) ($row['date'] ?? '')),
+            'amount' => (float) ($row['amount'] ?? 0),
+            'label' => $this->buildOdooBankTransactionLabel($row),
+            'details' => $this->serializeBankTransactionDetails($row['transaction_details'] ?? ''),
+            'payment_ref' => trim((string) ($row['payment_ref'] ?? '')),
+            'partner_name' => trim((string) ($row['partner_id'][1] ?? '')),
+            'journal_id' => (int) ($row['journal_id'][0] ?? 0),
+            'journal_label' => trim((string) ($row['journal_id'][1] ?? '')),
+            'statement_name' => trim((string) ($row['statement_id'][1] ?? '')),
+            'is_reconciled' => !empty($row['is_reconciled']),
+            'write_date' => trim((string) ($row['write_date'] ?? '')),
+        ];
+    }
+
+    private function getOdooBankTransactions($journalId, $sinceDate = '')
+    {
+        $journalId = (int) $journalId;
+        if ($journalId <= 0) {
+            return [];
+        }
+
+        $domain = [['journal_id', '=', $journalId]];
+        if ($sinceDate !== '') {
+            $domain[] = ['date', '>=', $sinceDate];
+        }
+
+        $fields = ['id', 'date', 'amount', 'payment_ref', 'ref', 'name', 'partner_id', 'journal_id', 'statement_id', 'transaction_details', 'is_reconciled', 'write_date'];
+        $rows = $this->odooSearchReadAll('account.bank.statement.line', $domain, $fields, ['order' => 'date asc, id asc']);
+
+        $transactions = [];
+        foreach ($rows as $row) {
+            $tx = $this->normalizeOdooBankTransaction($row);
+            if ($tx['id'] > 0 && $tx['date'] !== '') {
+                $transactions[] = $tx;
+            }
+        }
+
+        return $transactions;
+    }
+
+    private function getDolibarrBankTransactions($accountId, $sinceDate = '')
+    {
+        $accountId = (int) $accountId;
+        if ($accountId <= 0) {
+            return [];
+        }
+
+        $sql = "SELECT rowid, dateo, datev, amount, label, num_chq, num_releve, rappro, note, fk_account
+                FROM ".MAIN_DB_PREFIX."bank
+                WHERE fk_account = ".$accountId;
+        if ($sinceDate !== '') {
+            $sql .= " AND dateo >= '".$this->db->escape($sinceDate)."'";
+        }
+        $sql .= " ORDER BY dateo ASC, rowid ASC";
+
+        $resql = $this->db->query($sql);
+        $rows = [];
+        if ($resql) {
+            while ($obj = $this->db->fetch_object($resql)) {
+                $rows[] = [
+                    'id' => (int) ($obj->rowid ?? 0),
+                    'date' => !empty($obj->dateo) ? date('Y-m-d', $this->db->jdate($obj->dateo)) : '',
+                    'value_date' => !empty($obj->datev) ? date('Y-m-d', $this->db->jdate($obj->datev)) : '',
+                    'amount' => (float) ($obj->amount ?? 0),
+                    'label' => trim((string) ($obj->label ?? '')),
+                    'num_chq' => trim((string) ($obj->num_chq ?? '')),
+                    'num_releve' => trim((string) ($obj->num_releve ?? '')),
+                    'rappro' => (int) ($obj->rappro ?? 0),
+                    'note' => trim((string) ($obj->note ?? '')),
+                    'fk_account' => (int) ($obj->fk_account ?? 0),
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    private function determineDolibarrBankOperationCode($amount)
+    {
+        return ((float) $amount >= 0) ? 'VIR' : 'PRE';
+    }
+
+    private function updateDolibarrBankLineDetails($bankLineId, $label, $note)
+    {
+        $bankLineId = (int) $bankLineId;
+        if ($bankLineId <= 0) {
+            return;
+        }
+
+        $sql = "UPDATE ".MAIN_DB_PREFIX."bank SET label = '".$this->db->escape(substr((string) $label, 0, 255))."', note = ";
+        $sql .= ($note !== '' ? "'".$this->db->escape($note)."'" : 'NULL');
+        $sql .= " WHERE rowid = ".$bankLineId;
+        $this->db->query($sql);
+    }
+
+    private function createDolibarrBankTransactionFromOdoo(array $transaction, Account $account)
+    {
+        $user = $this->getExecutionUser();
+        $date = strtotime((string) $transaction['date']);
+        if ($date === false) {
+            throw new Exception('Date transaction Odoo invalide');
+        }
+
+        $numPayment = 'odoo:'.((int) $transaction['id']);
+        $label = (string) ($transaction['label'] ?? '');
+        $note = trim((string) ($transaction['details'] ?? ''));
+        if (!empty($transaction['payment_ref'])) {
+            $note = trim($note.($note !== '' ? "\n" : '').'Référence Odoo: '.$transaction['payment_ref']);
+        }
+
+        $lineId = $account->addline(
+            $date,
+            $this->determineDolibarrBankOperationCode($transaction['amount'] ?? 0),
+            $label,
+            (float) ($transaction['amount'] ?? 0),
+            $numPayment,
+            0,
+            $user,
+            (string) ($transaction['partner_name'] ?? ''),
+            '',
+            '',
+            $date,
+            (string) ($transaction['statement_name'] ?? '')
+        );
+
+        if ($lineId <= 0) {
+            throw new Exception('Création de la ligne bancaire Dolibarr impossible'.(!empty($account->error) ? ': '.$account->error : ''));
+        }
+
+        $this->updateDolibarrBankLineDetails($lineId, $label, $note);
+
+        return $lineId;
+    }
+
+    private function updateDolibarrBankTransactionFromOdoo($bankLineId, array $transaction)
+    {
+        $bankLine = new AccountLine($this->db);
+        if ($bankLine->fetch((int) $bankLineId) <= 0) {
+            return false;
+        }
+
+        if ((int) $bankLine->rappro === 1) {
+            $this->log('WARNING', 'sync', 'bank', (string) $transaction['id'], 'Ligne bancaire Dolibarr rapprochée, mise à jour ignorée.');
+            return false;
+        }
+
+        $targetDate = strtotime((string) $transaction['date']);
+        if ($targetDate === false) {
+            throw new Exception('Date transaction Odoo invalide');
+        }
+
+        $currentDate = !empty($bankLine->dateo) ? date('Y-m-d', (int) $bankLine->dateo) : '';
+        $needsUpdate = (abs(((float) $bankLine->amount) - ((float) $transaction['amount'])) > 0.00001)
+            || ($currentDate !== (string) $transaction['date']);
+
+        if ($needsUpdate) {
+            $bankLine->rowid = $bankLine->id;
+            $bankLine->amount = (float) $transaction['amount'];
+            $bankLine->dateo = $targetDate;
+            $bankLine->datev = $targetDate;
+            if ($bankLine->update($this->getExecutionUser()) <= 0) {
+                throw new Exception('Mise à jour ligne bancaire Dolibarr impossible: '.$bankLine->error);
+            }
+        }
+
+        $note = trim((string) ($transaction['details'] ?? ''));
+        if (!empty($transaction['payment_ref'])) {
+            $note = trim($note.($note !== '' ? "\n" : '').'Référence Odoo: '.$transaction['payment_ref']);
+        }
+        $this->updateDolibarrBankLineDetails((int) $bankLineId, (string) ($transaction['label'] ?? ''), $note);
+
+        return $needsUpdate;
+    }
+
+    private function buildOdooBankPayloadFromDolibarr(array $transaction, $journalId)
+    {
+        return [
+            'journal_id' => (int) $journalId,
+            'date' => (string) ($transaction['date'] ?? ''),
+            'payment_ref' => substr((string) ($transaction['label'] ?? ''), 0, 255),
+            'amount' => (float) ($transaction['amount'] ?? 0),
+        ];
+    }
+
+    private function getOdooBankTransactionById($transactionId)
+    {
+        $transactionId = (int) $transactionId;
+        if ($transactionId <= 0) {
+            return null;
+        }
+
+        $rows = $this->odooCallPublic('account.bank.statement.line', 'read', [[$transactionId], ['id', 'date', 'amount', 'payment_ref', 'is_reconciled', 'write_date']]);
+        if (empty($rows[0])) {
+            return null;
+        }
+
+        return $rows[0];
+    }
+
+    private function createOdooBankTransactionFromDolibarr(array $transaction, $journalId)
+    {
+        $payload = $this->buildOdooBankPayloadFromDolibarr($transaction, $journalId);
+        $newId = (int) $this->odooCallPublic('account.bank.statement.line', 'create', [$payload]);
+        if ($newId <= 0) {
+            throw new Exception('Création de la transaction bancaire Odoo impossible');
+        }
+
+        return $newId;
+    }
+
+    private function updateOdooBankTransactionFromDolibarr($transactionId, array $transaction, $journalId)
+    {
+        $current = $this->getOdooBankTransactionById($transactionId);
+        if (empty($current)) {
+            return false;
+        }
+
+        if (!empty($current['is_reconciled'])) {
+            $this->log('WARNING', 'sync', 'bank', (string) $transactionId, 'Transaction bancaire Odoo rapprochée, mise à jour ignorée.');
+            return false;
+        }
+
+        $payload = $this->buildOdooBankPayloadFromDolibarr($transaction, $journalId);
+        $changes = [];
+        if (abs(((float) ($current['amount'] ?? 0)) - ((float) $payload['amount'])) > 0.00001) {
+            $changes['amount'] = $payload['amount'];
+        }
+        if ((string) ($current['date'] ?? '') !== (string) $payload['date']) {
+            $changes['date'] = $payload['date'];
+        }
+        if ((string) ($current['payment_ref'] ?? '') !== (string) $payload['payment_ref']) {
+            $changes['payment_ref'] = $payload['payment_ref'];
+        }
+        if (empty($changes)) {
+            return false;
+        }
+
+        $this->odooCallPublic('account.bank.statement.line', 'write', [[(int) $transactionId], $changes]);
+        return true;
+    }
+
+    public function syncBankTransactions()
+    {
+        if (!$this->isBankSyncEnabled()) {
+            return true;
+        }
+
+        if (empty($this->odoo_uid) && !$this->connectOdoo()) {
+            throw new Exception('Connexion Odoo impossible pour la synchronisation bancaire: '.$this->lastError);
+        }
+
+        $accountId = $this->getConfiguredDolibarrBankAccountId();
+        $account = $this->getDolibarrBankAccountObject($accountId);
+        if (!$account) {
+            throw new Exception('Compte bancaire Dolibarr non configuré ou introuvable pour la synchronisation bancaire');
+        }
+
+        $journal = $this->resolveOdooBankJournal();
+        if (empty($journal['id'])) {
+            throw new Exception('Journal bancaire Odoo non configuré ou introuvable');
+        }
+
+        $sinceDate = $this->getConfiguredBankSyncStartDate();
+        $direction = $this->getBankSyncDirection();
+
+        if ($direction === 'odoo_to_dolibarr' || $direction === 'both') {
+            $transactions = $this->getOdooBankTransactions((int) $journal['id'], $sinceDate);
+            foreach ($transactions as $transaction) {
+                if (abs((float) $transaction['amount']) < 0.00001) {
+                    continue;
+                }
+
+                $mapping = $this->getBankSyncMappingByOdooId((int) $transaction['id']);
+                $bankLineId = (int) ($mapping['dolibarr_bank_line_id'] ?? 0);
+
+                if ($bankLineId > 0) {
+                    $updated = $this->updateDolibarrBankTransactionFromOdoo($bankLineId, $transaction);
+                    if ($updated) {
+                        $this->stats['transactions_bancaires_maj_doli']++;
+                        $this->log('INFO', 'sync', 'bank', (string) $transaction['id'], 'Transaction bancaire mise à jour dans Dolibarr.');
+                    }
+                    $this->saveBankSyncMapping((int) $transaction['id'], $bankLineId, $accountId, (int) $journal['id'], 'odoo_to_dolibarr', (string) ($transaction['write_date'] ?? ''));
+                    continue;
+                }
+
+                $newBankLineId = $this->createDolibarrBankTransactionFromOdoo($transaction, $account);
+                $this->saveBankSyncMapping((int) $transaction['id'], $newBankLineId, $accountId, (int) $journal['id'], 'odoo_to_dolibarr', (string) ($transaction['write_date'] ?? ''));
+                $this->stats['transactions_bancaires_creees_doli']++;
+                $this->log('INFO', 'sync', 'bank', (string) $transaction['id'], 'Transaction bancaire créée dans Dolibarr.');
+            }
+        }
+
+        if ($direction === 'dolibarr_to_odoo' || $direction === 'both') {
+            $transactions = $this->getDolibarrBankTransactions($accountId, $sinceDate);
+            foreach ($transactions as $transaction) {
+                if (strpos((string) ($transaction['num_chq'] ?? ''), 'odoo:') === 0) {
+                    continue;
+                }
+
+                $mapping = $this->getBankSyncMappingByDolibarrLineId((int) $transaction['id']);
+                $odooTransactionId = (int) ($mapping['odoo_transaction_id'] ?? 0);
+
+                if ($odooTransactionId > 0) {
+                    $updated = $this->updateOdooBankTransactionFromDolibarr($odooTransactionId, $transaction, (int) $journal['id']);
+                    if ($updated) {
+                        $this->stats['transactions_bancaires_maj_odoo']++;
+                        $this->log('INFO', 'sync', 'bank', (string) $transaction['id'], 'Transaction bancaire mise à jour dans Odoo.');
+                    }
+                    $current = $this->getOdooBankTransactionById($odooTransactionId);
+                    $this->saveBankSyncMapping($odooTransactionId, (int) $transaction['id'], $accountId, (int) $journal['id'], 'dolibarr_to_odoo', (string) ($current['write_date'] ?? ''));
+                    continue;
+                }
+
+                $newOdooTransactionId = $this->createOdooBankTransactionFromDolibarr($transaction, (int) $journal['id']);
+                $current = $this->getOdooBankTransactionById($newOdooTransactionId);
+                $this->saveBankSyncMapping($newOdooTransactionId, (int) $transaction['id'], $accountId, (int) $journal['id'], 'dolibarr_to_odoo', (string) ($current['write_date'] ?? ''));
+                $this->stats['transactions_bancaires_creees_odoo']++;
+                $this->log('INFO', 'sync', 'bank', (string) $transaction['id'], 'Transaction bancaire créée dans Odoo.');
+            }
+        }
+
+        return true;
     }
 
     private function ensureVatRateTableExists()

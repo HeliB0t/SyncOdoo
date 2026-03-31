@@ -43,7 +43,7 @@ function syncodooText(string $fr, string $nl): string
 }
 
 $moduleName = 'SyncOdoo';
-$moduleVersion = '0.1.0';
+$moduleVersion = '0.2.0';
 $paypalUrl = 'https://www.paypal.com/donate/?business=RBGCKNQF62C3E&no_recurring=0&currency_code=EUR';
 
 // ── Actions ──────────────────────────────────────────────
@@ -147,8 +147,8 @@ if ($tab === 'dashboard') {
 
     print '<div style="border:1px solid #e1e7ef;border-radius:8px;padding:14px;background:#fff;margin:0 0 12px 0;line-height:1.5">';
     print '<p style="margin:0 0 8px 0"><strong>'.syncodooText('SyncOdoo synchronise Dolibarr et Odoo dans les deux sens.', 'SyncOdoo synchroniseert Dolibarr en Odoo in beide richtingen.').'</strong></p>';
-    print '<p style="margin:0 0 8px 0">'.syncodooText('Le module couvre surtout les tiers, les factures clients et les factures fournisseurs avec une approche orientée controle utilisateur.', 'De module behandelt vooral relaties, verkoopfacturen en aankoopfacturen met focus op gebruikerscontrole.').'</p>';
-    print '<p style="margin:0 0 6px 0"><strong>'.syncodooText('Version', 'Versie').' :</strong> 0.1.0</p>';
+    print '<p style="margin:0 0 8px 0">'.syncodooText('Le module couvre surtout les tiers, les factures clients, les factures fournisseurs et, si configuree, la synchronisation des transactions bancaires avec une approche orientee controle utilisateur.', 'De module behandelt vooral relaties, verkoopfacturen, aankoopfacturen en, indien ingesteld, de synchronisatie van banktransacties met focus op gebruikerscontrole.').'</p>';
+    print '<p style="margin:0 0 6px 0"><strong>'.syncodooText('Version', 'Versie').' :</strong> 0.2.0</p>';
     print '<p style="margin:0"><strong>'.syncodooText('Statut', 'Status').' :</strong> '.syncodooText('experimental', 'experimenteel').'</p>';
     print '</div>';
 
@@ -160,6 +160,23 @@ if ($tab === 'dashboard') {
         print '<div class="ok">'.syncodooText('Synchronisation terminee en '.$elapsed.'s.', 'Synchronisatie voltooid in '.$elapsed.'s.').'</div>';
     } elseif ($result === 'error') {
         print '<div class="error">'.syncodooText('Erreur critique pendant la synchronisation. Consultez le journal.', 'Kritieke fout tijdens de synchronisatie. Raadpleeg het logboek.').'</div>';
+    }
+
+    if (is_array($stats)) {
+        $visibleStats = array_filter($stats, function ($value, $key) {
+            return ((int) $value > 0 && $key !== 'erreurs') || ($key === 'erreurs' && (int) $value > 0);
+        }, ARRAY_FILTER_USE_BOTH);
+
+        if (!empty($visibleStats)) {
+            print '<div style="border:1px solid #e1e7ef;border-radius:8px;padding:14px;background:#fff;margin:12px 0 0 0">';
+            print '<strong>'.syncodooText('Resume de la derniere execution', 'Samenvatting van de laatste uitvoering').'</strong>';
+            print '<table class="noborder" style="width:100%;margin-top:8px"><tbody>';
+            foreach ($visibleStats as $key => $value) {
+                print '<tr><td>'.htmlspecialchars($key).'</td><td style="text-align:right;font-weight:600">'.((int) $value).'</td></tr>';
+            }
+            print '</tbody></table>';
+            print '</div>';
+        }
     }
 }
 
