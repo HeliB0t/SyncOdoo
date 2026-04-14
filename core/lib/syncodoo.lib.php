@@ -11,6 +11,10 @@
  *
  * La langue peut être forcée via $_SESSION['syncodoo_lang'] (fr|nl).
  * En l'absence de forçage, on utilise $langs->defaultlang de Dolibarr.
+ *
+ * @param string $fr Texte en français
+ * @param string $nl Texte en néerlandais
+ * @return string     Texte dans la langue active
  */
 function syncodooText(string $fr, string $nl): string
 {
