@@ -14,6 +14,8 @@ if (!$res) {
 
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
 require_once __DIR__.'/core/classes/SyncOdoo.class.php';
+require_once __DIR__.'/core/lib/syncodoo.lib.php';
+require_once __DIR__.'/core/modules/modSyncodoo.class.php';
 
 // ── Vérification droits ──────────────────────────────────
 if (empty($conf->syncodoo->enabled)) {
@@ -32,18 +34,10 @@ if ($_set_lang === 'fr' || $_set_lang === 'nl') {
     $_SESSION['syncodoo_lang'] = $_set_lang;
 }
 
-function syncodooText(string $fr, string $nl): string
-{
-    global $langs;
-    $forced = $_SESSION['syncodoo_lang'] ?? '';
-    if ($forced === 'nl') return $nl;
-    if ($forced === 'fr') return $fr;
-    $code = strtolower((string) ($langs->defaultlang ?? ''));
-    return (strpos($code, 'nl') === 0) ? $nl : $fr;
-}
-
 $moduleName = 'SyncOdoo';
-$moduleVersion = '0.3.0';
+$_modInst = new modSyncodoo($db);
+$moduleVersion = $_modInst->version;
+unset($_modInst);
 $paypalUrl = 'https://www.paypal.com/donate/?business=RBGCKNQF62C3E&no_recurring=0&currency_code=EUR';
 
 // ── Actions ──────────────────────────────────────────────
@@ -148,7 +142,7 @@ if ($tab === 'dashboard') {
     print '<div style="border:1px solid #e1e7ef;border-radius:8px;padding:14px;background:#fff;margin:0 0 12px 0;line-height:1.5">';
     print '<p style="margin:0 0 8px 0"><strong>'.syncodooText('SyncOdoo synchronise Dolibarr et Odoo dans les deux sens.', 'SyncOdoo synchroniseert Dolibarr en Odoo in beide richtingen.').'</strong></p>';
     print '<p style="margin:0 0 8px 0">'.syncodooText('Le module couvre surtout les tiers, les factures clients, les factures fournisseurs et, si configuree, la synchronisation des transactions bancaires avec une approche orientee controle utilisateur.', 'De module behandelt vooral relaties, verkoopfacturen, aankoopfacturen en, indien ingesteld, de synchronisatie van banktransacties met focus op gebruikerscontrole.').'</p>';
-    print '<p style="margin:0 0 6px 0"><strong>'.syncodooText('Version', 'Versie').' :</strong> 0.3.0</p>';
+    print '<p style="margin:0 0 6px 0"><strong>'.syncodooText('Version', 'Versie').' :</strong> '.htmlspecialchars($moduleVersion).'</p>';
     print '<p style="margin:0"><strong>'.syncodooText('Statut', 'Status').' :</strong> '.syncodooText('experimental', 'experimenteel').'</p>';
     print '</div>';
 

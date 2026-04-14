@@ -356,7 +356,7 @@ class modSyncodoo extends DolibarrModules
 			)";
 
 		// Table de log
-		$sql[] = "CREATE TABLE IF NOT EXISTS llx_syncodoo_log (
+		$sql[] = "CREATE TABLE IF NOT EXISTS ".MAIN_DB_PREFIX."syncodoo_log (
 			rowid INT NOT NULL AUTO_INCREMENT,
 			datec DATETIME NOT NULL,
 			level VARCHAR(10) NOT NULL DEFAULT 'INFO',
@@ -369,7 +369,7 @@ class modSyncodoo extends DolibarrModules
 			INDEX idx_syncodoo_log_level (level)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
-		$sql[] = "CREATE TABLE IF NOT EXISTS llx_syncodoo_bank_map (
+		$sql[] = "CREATE TABLE IF NOT EXISTS ".MAIN_DB_PREFIX."syncodoo_bank_map (
 			rowid INT NOT NULL AUTO_INCREMENT,
 			datec DATETIME NOT NULL,
 			tms TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -400,8 +400,8 @@ class modSyncodoo extends DolibarrModules
 	public function remove($options = '')
 	{
 		$sql = array();
-		$sql[] = "DROP TABLE IF EXISTS llx_syncodoo_log";
-		$sql[] = "DROP TABLE IF EXISTS llx_syncodoo_bank_map";
+		$sql[] = "DROP TABLE IF EXISTS ".MAIN_DB_PREFIX."syncodoo_log";
+		$sql[] = "DROP TABLE IF EXISTS ".MAIN_DB_PREFIX."syncodoo_bank_map";
 
 		return $this->_remove($sql, $options);
 	}

@@ -14,6 +14,7 @@ if (!$res) {
     die('main.inc.php introuvable');
 }
 require_once __DIR__.'/core/classes/SyncOdoo.class.php';
+require_once __DIR__.'/core/lib/syncodoo.lib.php';
 
 if (empty($conf->syncodoo->enabled)) {
     accessforbidden(syncodooText('Module SyncOdoo desactive', 'Module SyncOdoo uitgeschakeld'));
@@ -31,15 +32,6 @@ if ($_set_lang === 'fr' || $_set_lang === 'nl') {
     $_SESSION['syncodoo_lang'] = $_set_lang;
 }
 
-function syncodooText(string $fr, string $nl): string
-{
-    global $langs;
-    $forced = $_SESSION['syncodoo_lang'] ?? '';
-    if ($forced === 'nl') return $nl;
-    if ($forced === 'fr') return $fr;
-    $code = strtolower((string) ($langs->defaultlang ?? ''));
-    return (strpos($code, 'nl') === 0) ? $nl : $fr;
-}
 $isDeleteScope = ($scope === 'effacer');
 $showThirdparties = ($scope === 'tiers' || $scope === '' || $isDeleteScope);
 $showInvoices = ($scope !== 'tiers' && !$isDeleteScope);
@@ -424,6 +416,25 @@ if ($action === 'apply_actions' && $user->rights->syncodoo->lancer) {
                 }
 
                 [$type, $id, $ref, $actionType] = $parts;
+
+                // Validate type and actionType against known whitelists.
+                $allowedInvoiceActions = [
+                    'delete_odoo', 'delete_doli', 'sync_to_odoo', 'sync_to_doli',
+                    'delete_both_from_odoo', 'delete_both_from_doli', 'delete_both_pair',
+                ];
+                $allowedThirdpartyActions = [
+                    'delete_odoo', 'delete_doli', 'sync_to_odoo', 'sync_to_doli',
+                    'delete_both_from_odoo', 'delete_both_from_doli', 'delete_both_pair',
+                ];
+                if ($type === 'invoice' && !in_array($actionType, $allowedInvoiceActions, true)) {
+                    continue;
+                }
+                if ($type === 'thirdparty' && !in_array($actionType, $allowedThirdpartyActions, true)) {
+                    continue;
+                }
+                if (!in_array($type, ['invoice', 'thirdparty'], true)) {
+                    continue;
+                }
 
                 try {
                     if ($type === 'invoice') {
@@ -1587,7 +1598,13 @@ function getDolibarrThirdpartyFromInvoiceContext($db, string $invoiceRef, int $i
 
 function areVatTotalsConsistent(float $ht, float $tva, float $ttc): bool
 {
-    return abs(($ht + $tva) - $ttc) <= 0.02;
+    // Delegates to SyncOdoo::isVatConsistent() to keep a single threshold (0.02).
+    static $inst = null;
+    if ($inst === null) {
+        global $db;
+        $inst = new SyncOdoo($db);
+    }
+    return $inst->isVatConsistent($ht, $tva, $ttc);
 }
 
 function parseVatInput($raw): ?float
@@ -1609,10 +1626,10 @@ function parseVatInput($raw): ?float
 
 function computeVatRatePercent(float $ht, float $tva): float
 {
-    if (abs($ht) < 0.0000001) {
+    if (abs($ht) < 0.00001) {
         return 0.0;
     }
-    return ($tva / $ht) * 100.0;
+    return round(($tva / $ht) * 100.0, 2);
 }
 
 function updateDolibarrInvoiceTotalsByRef($db, string $ref, string $invoiceType, float $ht, float $tva, float $ttc): void

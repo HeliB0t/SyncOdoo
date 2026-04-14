@@ -8,11 +8,6 @@ require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/user/class/user.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
 
-$syncodooRipcordPath = DOL_DOCUMENT_ROOT.'/custom/syncodoo/lib/ripcord/ripcord.php';
-if (is_readable($syncodooRipcordPath)) {
-    require_once $syncodooRipcordPath;
-}
-
 class SyncOdoo
 {
     public $db;
@@ -27,6 +22,8 @@ class SyncOdoo
 
     private $executionUser;
     private $hasSocieteOdooIdColumn;
+    private $tiersDoliCache = null;
+    private $tiersOdooCache = null;
 
     private function odooJsonRpc($service, $method, $args)
     {
@@ -1159,14 +1156,21 @@ class SyncOdoo
             $invoice->ref_supplier = $displayRef;  // ref interne générée automatiquement par Dolibarr
             $invoice->note_private = 'Créée automatiquement depuis Odoo par SyncOdoo'.($proofText !== '' ? ' | Références Odoo: '.$proofText : '');
 
-            $invoiceId = $invoice->create($user);
-            if ($invoiceId <= 0) {
-                throw new Exception('Erreur création facture fournisseur Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
-            }
+            $this->db->begin();
+            try {
+                $invoiceId = $invoice->create($user);
+                if ($invoiceId <= 0) {
+                    throw new Exception('Erreur création facture fournisseur Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
+                }
 
-            $lineRes = $invoice->addline($line['desc'], $line['unit_price'], $line['vat'], 0, 0, $line['qty']);
-            if ($lineRes <= 0) {
-                throw new Exception('Erreur ajout ligne facture fournisseur Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
+                $lineRes = $invoice->addline($line['desc'], $line['unit_price'], $line['vat'], 0, 0, $line['qty']);
+                if ($lineRes <= 0) {
+                    throw new Exception('Erreur ajout ligne facture fournisseur Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
+                }
+                $this->db->commit();
+            } catch (Exception $e) {
+                $this->db->rollback();
+                throw $e;
             }
 
             try {
@@ -1181,14 +1185,21 @@ class SyncOdoo
             $invoice->ref_customer = $displayRef;
             $invoice->note_private = 'Créée automatiquement depuis Odoo par SyncOdoo'.($proofText !== '' ? ' | Références Odoo: '.$proofText : '');
 
-            $invoiceId = $invoice->create($user);
-            if ($invoiceId <= 0) {
-                throw new Exception('Erreur création facture client Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
-            }
+            $this->db->begin();
+            try {
+                $invoiceId = $invoice->create($user);
+                if ($invoiceId <= 0) {
+                    throw new Exception('Erreur création facture client Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
+                }
 
-            $lineRes = $invoice->addline($line['desc'], $line['unit_price'], $line['qty'], $line['vat']);
-            if ($lineRes <= 0) {
-                throw new Exception('Erreur ajout ligne facture client Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
+                $lineRes = $invoice->addline($line['desc'], $line['unit_price'], $line['qty'], $line['vat']);
+                if ($lineRes <= 0) {
+                    throw new Exception('Erreur ajout ligne facture client Dolibarr: '.($invoice->error ?: $this->db->lasterror()));
+                }
+                $this->db->commit();
+            } catch (Exception $e) {
+                $this->db->rollback();
+                throw $e;
             }
 
             try {
@@ -1444,6 +1455,8 @@ class SyncOdoo
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'Content-Type: application/json',
             'DOLAPIKEY: ' . $apiKey
@@ -1460,6 +1473,11 @@ class SyncOdoo
         }
 
         $response = curl_exec($ch);
+        if ($response === false) {
+            $err = curl_error($ch);
+            curl_close($ch);
+            throw new Exception('Erreur CURL Dolibarr API: '.$err);
+        }
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
@@ -1476,6 +1494,10 @@ class SyncOdoo
 
     private function getDolibarrTiers()
     {
+        if ($this->tiersDoliCache !== null) {
+            return $this->tiersDoliCache;
+        }
+
         $sql = "SELECT s.rowid, s.nom as name, s.email, s.phone, s.zip, s.town, s.tva_intra,
                        s.client, s.fournisseur";
         if ($this->hasSocieteOdooIdColumn()) {
@@ -1513,6 +1535,7 @@ class SyncOdoo
                 'type_flags' => $this->getDolibarrTypeFlags($obj->client, $obj->fournisseur),
             ];
         }
+        $this->tiersDoliCache = $list;
         return $list;
     }
 
@@ -1522,6 +1545,10 @@ class SyncOdoo
 
     private function getOdooTiers()
     {
+        if ($this->tiersOdooCache !== null) {
+            return $this->tiersOdooCache;
+        }
+
         $partners = $this->odooExecuteKw(
             'res.partner',
             'search_read',
@@ -1563,7 +1590,18 @@ class SyncOdoo
                 'type_flags' => $this->getOdooTypeFlags($p['customer_rank'], $p['supplier_rank']),
             ];
         }
+        $this->tiersOdooCache = $list;
         return $list;
+    }
+
+    /**
+     * Invalide le cache des tiers (Dolibarr et Odoo).
+     * À appeler après toute création ou modification d'un tiers.
+     */
+    private function invalidateTiersCache()
+    {
+        $this->tiersDoliCache = null;
+        $this->tiersOdooCache = null;
     }
 
     /* ============================================================
@@ -3094,8 +3132,16 @@ class SyncOdoo
                 throw new Exception('Erreur creation tiers Dolibarr pour "'.$societe->name.'": '.$this->getDolibarrObjectError($societe));
             }
 
-            $this->updateThirdpartyMapping($newId, $odoo_id);
+            $this->db->begin();
+            try {
+                $this->updateThirdpartyMapping($newId, $odoo_id);
+                $this->db->commit();
+            } catch (Exception $e) {
+                $this->db->rollback();
+                throw $e;
+            }
 
+            $this->invalidateTiersCache();
             $this->log('INFO', 'sync', 'thirdparty', $odoo['name'], 'Création tiers Dolibarr depuis Odoo');
             return (int) $newId;
         }
@@ -3164,8 +3210,16 @@ class SyncOdoo
                 throw new Exception('Création partenaire Odoo échouée');
             }
 
-            $this->updateThirdpartyMapping($dol_id, (int) $newOdooId);
+            $this->db->begin();
+            try {
+                $this->updateThirdpartyMapping($dol_id, (int) $newOdooId);
+                $this->db->commit();
+            } catch (Exception $e) {
+                $this->db->rollback();
+                throw $e;
+            }
 
+            $this->invalidateTiersCache();
             $this->log('INFO', 'sync', 'thirdparty', $doli['name'], 'Création partenaire Odoo depuis Dolibarr');
             return (int) $newOdooId;
         }
@@ -3241,7 +3295,7 @@ class SyncOdoo
         }
     }
 
-    private function isVatConsistent($ht, $tva, $ttc)
+    public function isVatConsistent($ht, $tva, $ttc)
     {
         return abs(((float) $ht + (float) $tva) - (float) $ttc) <= 0.02;
     }

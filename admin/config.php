@@ -13,6 +13,7 @@ if (!$res) {
 
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
 require_once __DIR__.'/../core/classes/SyncOdoo.class.php';
+require_once __DIR__.'/../core/lib/syncodoo.lib.php';
 
 if (empty($conf->syncodoo->enabled)) {
     accessforbidden(syncodooText('Module SyncOdoo desactive', 'SyncOdoo-module uitgeschakeld'));
@@ -27,16 +28,6 @@ $action = GETPOST('action', 'alpha');
 $_set_lang = GETPOST('set_lang', 'alpha');
 if ($_set_lang === 'fr' || $_set_lang === 'nl') {
     $_SESSION['syncodoo_lang'] = $_set_lang;
-}
-
-function syncodooText(string $fr, string $nl): string
-{
-    global $langs;
-    $forced = $_SESSION['syncodoo_lang'] ?? '';
-    if ($forced === 'nl') return $nl;
-    if ($forced === 'fr') return $fr;
-    $code = strtolower((string) ($langs->defaultlang ?? ''));
-    return (strpos($code, 'nl') === 0) ? $nl : $fr;
 }
 
 // Auto-migrate legacy demo URL to HTTPS recommendation.
