@@ -13,31 +13,20 @@ if (!$res) {
 
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
 require_once __DIR__.'/../core/classes/SyncOdoo.class.php';
+require_once __DIR__.'/../core/lib/syncodoo_i18n.lib.php';
+require_once __DIR__.'/../core/lib/syncodoo_ui.lib.php';
+require_once __DIR__.'/../core/lib/syncodoo_config.lib.php';
 
 if (empty($conf->syncodoo->enabled)) {
-    accessforbidden(syncodooText('Module SyncOdoo desactive', 'SyncOdoo-module uitgeschakeld'));
+    accessforbidden(syncodoo_tr('SyncodooErrorModuleDisabled'));
 }
 if (!$user->rights->syncodoo->config) {
     accessforbidden();
 }
 
 $langs->load('syncodoo@syncodoo');
+syncodoo_handle_lang_request();
 $action = GETPOST('action', 'alpha');
-
-$_set_lang = GETPOST('set_lang', 'alpha');
-if ($_set_lang === 'fr' || $_set_lang === 'nl') {
-    $_SESSION['syncodoo_lang'] = $_set_lang;
-}
-
-function syncodooText(string $fr, string $nl): string
-{
-    global $langs;
-    $forced = $_SESSION['syncodoo_lang'] ?? '';
-    if ($forced === 'nl') return $nl;
-    if ($forced === 'fr') return $fr;
-    $code = strtolower((string) ($langs->defaultlang ?? ''));
-    return (strpos($code, 'nl') === 0) ? $nl : $fr;
-}
 
 // Auto-migrate legacy demo URL to HTTPS recommendation.
 $legacyUrls = ['http://odoo.mondomaine.com', 'http://odoo.mondomaine.com/'];
@@ -65,19 +54,39 @@ if ($action === 'save') {
         'SYNCODOO_BANK_SYNC_START_DATE' => trim(GETPOST('SYNCODOO_BANK_SYNC_START_DATE', 'restricthtml')),
     ];
 
+    $validationErrors = syncodoo_validate_config_input($fields);
+    if (!empty($validationErrors)) {
+        setEventMessages(syncodoo_tr('SyncodooConfigErrorPrefix'), $validationErrors, 'errors');
+        header('Location: '.$_SERVER['PHP_SELF']);
+        exit;
+    }
+
     foreach ($fields as $const => $val) {
-        if ($const === 'SYNCODOO_ODOO_PASSWORD' && $val === '') {
+        if ($const === 'SYNCODOO_ODOO_PASSWORD' || $const === 'SYNCODOO_DOLI_APIKEY') {
             continue;
         }
 
         dolibarr_set_const($db, $const, $val, 'chaine', 1, '', $conf->entity);
-
-        // Keep old key in sync for backward compatibility with existing deployments.
-        if ($const === 'SYNCODOO_ODOO_PASSWORD') {
-            dolibarr_set_const($db, 'SYNCODOO_ODOO_PASS', $val, 'chaine', 1, '', $conf->entity);
-        }
     }
-    setEventMessages(syncodooText('Configuration enregistrée.', 'Instellingen opgeslagen.'), null, 'mesgs');
+
+    $newOdooPassword = (string) ($fields['SYNCODOO_ODOO_PASSWORD'] ?? '');
+    if ($newOdooPassword !== '') {
+        syncodoo_store_secret($db, $conf->entity, 'SYNCODOO_ODOO_PASSWORD', $newOdooPassword, ['SYNCODOO_ODOO_PASS']);
+    }
+
+    $newFallbackApiKey = (string) ($fields['SYNCODOO_DOLI_APIKEY'] ?? '');
+    if ($newFallbackApiKey !== '') {
+        syncodoo_store_secret($db, $conf->entity, 'SYNCODOO_DOLI_APIKEY', $newFallbackApiKey);
+    }
+
+    setEventMessages(syncodoo_tr('ConfigSauvegardee'), null, 'mesgs');
+    header('Location: '.$_SERVER['PHP_SELF']);
+    exit;
+}
+
+if ($action === 'rotate_secrets') {
+    syncodoo_rotate_stored_secrets($db, $conf, $conf->entity);
+    setEventMessages(syncodoo_tr('SyncodooConfigSecretsRotated'), null, 'mesgs');
     header('Location: '.$_SERVER['PHP_SELF']);
     exit;
 }
@@ -89,9 +98,9 @@ if ($action === 'test_odoo') {
     $testResult = $sync->testOdooConnectionDetailed();
     
     if ($testResult['success']) {
-        setEventMessages(syncodooText('✓ Connexion Odoo réussie !', '✓ Odoo-verbinding gelukt!'), null, 'mesgs');
+        setEventMessages(syncodoo_tr('SyncodooConfigConnectionSuccess'), null, 'mesgs');
     } else {
-        setEventMessages(syncodooText('✗ Échec : ', '✗ Mislukt: ').$testResult['error'], null, 'errors');
+        setEventMessages(syncodoo_tr('SyncodooConfigConnectionFailedPrefix').$testResult['error'], null, 'errors');
     }
     
     // Stocker les détails en session pour les afficher
@@ -123,42 +132,13 @@ if ($action === 'create_cron') {
 // ════════════════════════════════════════════════════════
 llxHeader('', syncodooText('SyncOdoo — Configuration', 'SyncOdoo — Instellingen'));
 global $user;
-print '<style>';
-print '.butAction, .butActionDelete {';
-print 'background:#1f8f43 !important;border-color:#1f8f43 !important;color:#fff !important;';
-print '}';
-print '.butAction:hover, .butActionDelete:hover {';
-print 'background:#177336 !important;border-color:#177336 !important;color:#fff !important;';
-print '}';
-print '</style>';
+syncodoo_print_common_styles();
 print load_fiche_titre(syncodooText('Configuration SyncOdoo', 'SyncOdoo-instellingen'), '', 'setup');
 
-$_syncoActiveLang = $_SESSION['syncodoo_lang'] ?? (strpos(strtolower((string) ($langs->defaultlang ?? '')), 'nl') === 0 ? 'nl' : 'fr');
-$_syncoBase = dol_buildpath('/syncodoo/admin/config.php', 1);
-print '<div style="text-align:right;margin:4px 0 6px 0;font-size:0.88em">';
-print '<span style="color:#6c757d;margin-right:4px">'.syncodooText('Langue :', 'Taal:').'</span>';
-print '<a href="'.$_syncoBase.'?set_lang=fr" style="padding:2px 10px;text-decoration:none;border-radius:3px 0 0 3px;border:1px solid #ccc;'.($_syncoActiveLang === 'fr' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#f8f9fa;color:#495057').'">FR</a>';
-print '<a href="'.$_syncoBase.'?set_lang=nl" style="padding:2px 10px;text-decoration:none;border-radius:0 3px 3px 0;border:1px solid #ccc;border-left:none;'.($_syncoActiveLang === 'nl' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#f8f9fa;color:#495057').'">NL</a>';
-print '</div>';
+$_syncoBase = dol_buildpath('/syncodoo/admin/config.php', 1).'?tab=config';
+syncodoo_render_lang_switcher($_syncoBase);
 
-// Onglets
-$head = [];
-$head[0][0] = dol_buildpath('/syncodoo/index.php', 1).'?tab=dashboard';
-$head[0][1] = 'Dashboard';
-$head[0][2] = 'dashboard';
-$head[1][0] = dol_buildpath('/syncodoo/divergences.php', 1);
-$head[1][1] = 'Divergences';
-$head[1][2] = 'divergences';
-$head[2][0] = dol_buildpath('/syncodoo/index.php', 1).'?tab=log';
-$head[2][1] = 'Journal';
-$head[2][2] = 'log';
-$head[3][0] = dol_buildpath('/syncodoo/admin/config.php', 1);
-$head[3][1] = 'Configuration';
-$head[3][2] = 'config';
-$head[4][0] = dol_buildpath('/syncodoo/index.php', 1).'?tab=about';
-$head[4][1] = 'À propos';
-$head[4][2] = 'about';
-print dol_get_fiche_head($head, 'config', 'SyncOdoo', 0, 'refresh');
+syncodoo_render_tabs('config', true);
 
 $syncConfig = new SyncOdoo($db);
 $doliBankAccounts = $syncConfig->getDolibarrBankAccounts();
@@ -181,8 +161,8 @@ $fields = [
 
 foreach ($fields as $const => [$label, $type, $placeholder, $isSecret]) {
     $current = $conf->global->$const ?? '';
-    if ($const === 'SYNCODOO_ODOO_PASSWORD' && empty($current)) {
-        $current = $conf->global->SYNCODOO_ODOO_PASS ?? '';
+    if ($const === 'SYNCODOO_ODOO_PASSWORD') {
+        $current = syncodoo_get_secret_from_conf($conf, 'SYNCODOO_ODOO_PASSWORD', ['SYNCODOO_ODOO_PASS']);
     }
     $display = ($isSecret && $current) ? '' : htmlspecialchars($current);
     $inputId = 'syncodoo_'.strtolower($const);
@@ -220,7 +200,7 @@ if (!empty($user->api_key)) {
     print '<br><small style="color:#d9534f">⚠ '.syncodooText('Attention: utilisateur ', 'Let op: gebruiker ').htmlspecialchars($user->login).syncodooText(' sans cle API. Generez-la dans Accueil -> Securite -> Cle API REST.', ' heeft geen API-sleutel. Genereer die in Home -> Beveiliging -> REST API-sleutel.').'</small>';
 }
 print '</div>';
-$fallbackKey = $conf->global->SYNCODOO_DOLI_APIKEY ?? '';
+$fallbackKey = syncodoo_get_secret_from_conf($conf, 'SYNCODOO_DOLI_APIKEY');
 if (!empty($fallbackKey)) {
     print '<br><small class="opacitymedium">'.syncodooText('Cle de secours en configuration (utilisee seulement si l\'utilisateur n\'a pas de cle).', 'Reservesleutel in configuratie (alleen gebruikt als de gebruiker geen sleutel heeft).').'</small>';
     print '<div style="display:flex;align-items:center;gap:8px;margin-top:6px">';
@@ -313,6 +293,11 @@ print '<br><small class="opacitymedium">'.syncodooText('Limite l\'import aux tra
 
 print '</tbody></table>';
 print '<br><button type="submit" class="butAction">'.syncodooText('Enregistrer', 'Opslaan').'</button>';
+print '</form>';
+print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'" style="margin-top:10px">';
+print '<input type="hidden" name="token" value="'.newToken().'">';
+print '<input type="hidden" name="action" value="rotate_secrets">';
+print '<button type="submit" class="butActionDelete" onclick="return confirm(\''.syncodoo_tr('SyncodooConfigRotateConfirm').'\')">'.syncodoo_tr('SyncodooConfigRotateSecretsButton').'</button>';
 print '</form>';
 
 // ── Test de connexion Odoo ──────────────────────────────────

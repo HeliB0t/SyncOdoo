@@ -14,6 +14,8 @@ if (!$res) {
     die('main.inc.php introuvable');
 }
 require_once __DIR__.'/core/classes/SyncOdoo.class.php';
+require_once __DIR__.'/core/lib/syncodoo_i18n.lib.php';
+require_once __DIR__.'/core/lib/syncodoo_ui.lib.php';
 
 if (empty($conf->syncodoo->enabled)) {
     accessforbidden(syncodooText('Module SyncOdoo desactive', 'Module SyncOdoo uitgeschakeld'));
@@ -23,23 +25,9 @@ if (!$user->rights->syncodoo->lire) {
 }
 
 $langs->load('syncodoo@syncodoo');
+syncodoo_handle_lang_request();
 $action = GETPOST('action', 'alpha');
 $scope = GETPOST('scope', 'alpha');
-
-$_set_lang = GETPOST('set_lang', 'alpha');
-if ($_set_lang === 'fr' || $_set_lang === 'nl') {
-    $_SESSION['syncodoo_lang'] = $_set_lang;
-}
-
-function syncodooText(string $fr, string $nl): string
-{
-    global $langs;
-    $forced = $_SESSION['syncodoo_lang'] ?? '';
-    if ($forced === 'nl') return $nl;
-    if ($forced === 'fr') return $fr;
-    $code = strtolower((string) ($langs->defaultlang ?? ''));
-    return (strpos($code, 'nl') === 0) ? $nl : $fr;
-}
 $isDeleteScope = ($scope === 'effacer');
 $showThirdparties = ($scope === 'tiers' || $scope === '' || $isDeleteScope);
 $showInvoices = ($scope !== 'tiers' && !$isDeleteScope);
@@ -612,26 +600,13 @@ try {
 // AFFICHAGE
 // ════════════════════════════════════════════════════════
 llxHeader('', syncodooText('SyncOdoo — Divergences', 'SyncOdoo — Divergenties'));
-print '<style>';
-print '.butAction, .butActionDelete {';
-print 'background:#1f8f43 !important;border-color:#1f8f43 !important;color:#fff !important;';
-print '}';
-print '.butAction:hover, .butActionDelete:hover {';
-print 'background:#177336 !important;border-color:#177336 !important;color:#fff !important;';
-print '}';
-print '</style>';
+syncodoo_print_common_styles();
 print load_fiche_titre(syncodooText('SyncOdoo — Gestion des divergences', 'SyncOdoo — Beheer van divergenties'), '', 'refresh');
 
-$_syncoActiveLang = $_SESSION['syncodoo_lang'] ?? (strpos(strtolower((string) ($langs->defaultlang ?? '')), 'nl') === 0 ? 'nl' : 'fr');
-$_syncoBase = dol_buildpath('/syncodoo/divergences.php', 1);
-print '<div style="text-align:right;margin:4px 0 6px 0;font-size:0.88em">';
-print '<span style="color:#6c757d;margin-right:4px">'.syncodooText('Langue :', 'Taal:').'</span>';
-print '<a href="'.$_syncoBase.'?set_lang=fr" style="padding:2px 10px;text-decoration:none;border-radius:3px 0 0 3px;border:1px solid #ccc;'.($_syncoActiveLang === 'fr' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#f8f9fa;color:#495057').'">FR</a>';
-print '<a href="'.$_syncoBase.'?set_lang=nl" style="padding:2px 10px;text-decoration:none;border-radius:0 3px 3px 0;border:1px solid #ccc;border-left:none;'.($_syncoActiveLang === 'nl' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#f8f9fa;color:#495057').'">NL</a>';
-print '</div>';
+$_syncoBase = dol_buildpath('/syncodoo/divergences.php', 1).'?scope='.$scope;
+syncodoo_render_lang_switcher($_syncoBase);
 
-$head = buildSyncodooHead($conf, $user);
-print dol_get_fiche_head($head, 'divergences', 'SyncOdoo', 0, 'refresh');
+syncodoo_render_tabs('divergences', !empty($user->rights->syncodoo->config));
 
 // Retours d'action
 foreach ($messages as $msg) {

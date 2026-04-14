@@ -14,36 +14,26 @@ if (!$res) {
 
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
 require_once __DIR__.'/core/classes/SyncOdoo.class.php';
+require_once __DIR__.'/core/lib/syncodoo_i18n.lib.php';
+require_once __DIR__.'/core/lib/syncodoo_ui.lib.php';
+require_once __DIR__.'/core/lib/syncodoo_config.lib.php';
+require_once __DIR__.'/core/lib/syncodoo_version.lib.php';
 
 // ── Vérification droits ──────────────────────────────────
 if (empty($conf->syncodoo->enabled)) {
-    accessforbidden('Module SyncOdoo désactivé');
+    accessforbidden(syncodoo_tr('SyncodooErrorModuleDisabled'));
 }
 if (!$user->rights->syncodoo->lire) {
     accessforbidden();
 }
 
 $langs->load('syncodoo@syncodoo');
+syncodoo_handle_lang_request();
 $tab    = GETPOST('tab', 'alpha') ?: 'dashboard';
 $action = GETPOST('action', 'alpha');
 
-$_set_lang = GETPOST('set_lang', 'alpha');
-if ($_set_lang === 'fr' || $_set_lang === 'nl') {
-    $_SESSION['syncodoo_lang'] = $_set_lang;
-}
-
-function syncodooText(string $fr, string $nl): string
-{
-    global $langs;
-    $forced = $_SESSION['syncodoo_lang'] ?? '';
-    if ($forced === 'nl') return $nl;
-    if ($forced === 'fr') return $fr;
-    $code = strtolower((string) ($langs->defaultlang ?? ''));
-    return (strpos($code, 'nl') === 0) ? $nl : $fr;
-}
-
 $moduleName = 'SyncOdoo';
-$moduleVersion = '0.3.0';
+$moduleVersion = SYNCODOO_MODULE_VERSION;
 $paypalUrl = 'https://www.paypal.com/donate/?business=RBGCKNQF62C3E&no_recurring=0&currency_code=EUR';
 
 // ── Actions ──────────────────────────────────────────────
@@ -79,52 +69,18 @@ if ($tab === 'log') {
 // ════════════════════════════════════════════════════════
 // AFFICHAGE
 // ════════════════════════════════════════════════════════
-llxHeader('', syncodooText('SyncOdoo — Synchronisation Dolibarr ↔ Odoo', 'SyncOdoo — Synchronisatie Dolibarr ↔ Odoo'));
+llxHeader('', syncodoo_tr('SyncodooPageTitleMain'));
 
-print '<style>';
-print '.butAction, .butActionDelete {';
-print 'background:#1f8f43 !important;border-color:#1f8f43 !important;color:#fff !important;';
-print '}';
-print '.butAction:hover, .butActionDelete:hover {';
-print 'background:#177336 !important;border-color:#177336 !important;color:#fff !important;';
-print '}';
-print '.syncodoo-about-box {';
-print 'border:1px solid #e1e7ef;border-radius:8px;padding:16px;background:#fff;max-width:980px;';
-print '}';
-print '</style>';
-
-print load_fiche_titre(syncodooText('SyncOdoo — Synchronisation Dolibarr ↔ Odoo', 'SyncOdoo — Synchronisatie Dolibarr ↔ Odoo'), '', 'refresh');
+syncodoo_print_common_styles();
+print load_fiche_titre(syncodoo_tr('SyncodooPageTitleMain'), '', 'refresh');
 
 // ── Onglets ──────────────────────────────────────────────
-$head = [];
-$head[0][0] = dol_buildpath('/syncodoo/index.php', 1).'?tab=dashboard';
-$head[0][1] = 'Dashboard';
-$head[0][2] = 'dashboard';
-$head[1][0] = dol_buildpath('/syncodoo/divergences.php', 1);
-$head[1][1] = 'Divergences';
-$head[1][2] = 'divergences';
-$head[2][0] = dol_buildpath('/syncodoo/index.php', 1).'?tab=log';
-$head[2][1] = 'Journal';
-$head[2][2] = 'log';
-if ($user->rights->syncodoo->config) {
-    $head[3][0] = dol_buildpath('/syncodoo/admin/config.php', 1);
-    $head[3][1] = 'Configuration';
-    $head[3][2] = 'config';
-    $head[4][0] = dol_buildpath('/syncodoo/index.php', 1).'?tab=about';
-    $head[4][1] = 'À propos';
-    $head[4][2] = 'about';
-} else {
-    $head[3][0] = dol_buildpath('/syncodoo/index.php', 1).'?tab=about';
-    $head[3][1] = 'À propos';
-    $head[3][2] = 'about';
-}
-print dol_get_fiche_head($head, $tab, 'SyncOdoo', 0, 'refresh');
+syncodoo_render_tabs($tab, !empty($user->rights->syncodoo->config));
 
 // ════════════════════════════════════════════════════════
 // TAB : TABLEAU DE BORD
 // ════════════════════════════════════════════════════════
 if ($tab === 'dashboard') {
-    $_syncoActiveLang = $_SESSION['syncodoo_lang'] ?? (strpos(strtolower((string) ($langs->defaultlang ?? '')), 'nl') === 0 ? 'nl' : 'fr');
     $_syncoBase = dol_buildpath('/syncodoo/index.php', 1).'?tab=dashboard';
     print '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:6px 0 14px 0">';
 
@@ -137,18 +93,14 @@ if ($tab === 'dashboard') {
     print '<button type="submit" class="butAction"'.($disabled ? ' disabled' : '').'>'.syncodooText('▶ Lancer la synchronisation', '▶ Synchronisatie nu starten').'</button>';
     print '</form>';
 
-    print '<div style="font-size:0.88em">';
-    print '<span style="color:#6c757d;margin-right:4px">'.syncodooText('Langue :', 'Taal:').'</span>';
-    print '<a href="'.$_syncoBase.'&set_lang=fr" style="padding:2px 10px;text-decoration:none;border-radius:3px 0 0 3px;border:1px solid #ccc;'.($_syncoActiveLang === 'fr' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#f8f9fa;color:#495057').'">FR</a>';
-    print '<a href="'.$_syncoBase.'&set_lang=nl" style="padding:2px 10px;text-decoration:none;border-radius:0 3px 3px 0;border:1px solid #ccc;border-left:none;'.($_syncoActiveLang === 'nl' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#f8f9fa;color:#495057').'">NL</a>';
-    print '</div>';
+    syncodoo_render_lang_switcher($_syncoBase);
 
     print '</div>';
 
     print '<div style="border:1px solid #e1e7ef;border-radius:8px;padding:14px;background:#fff;margin:0 0 12px 0;line-height:1.5">';
     print '<p style="margin:0 0 8px 0"><strong>'.syncodooText('SyncOdoo synchronise Dolibarr et Odoo dans les deux sens.', 'SyncOdoo synchroniseert Dolibarr en Odoo in beide richtingen.').'</strong></p>';
     print '<p style="margin:0 0 8px 0">'.syncodooText('Le module couvre surtout les tiers, les factures clients, les factures fournisseurs et, si configuree, la synchronisation des transactions bancaires avec une approche orientee controle utilisateur.', 'De module behandelt vooral relaties, verkoopfacturen, aankoopfacturen en, indien ingesteld, de synchronisatie van banktransacties met focus op gebruikerscontrole.').'</p>';
-    print '<p style="margin:0 0 6px 0"><strong>'.syncodooText('Version', 'Versie').' :</strong> 0.3.0</p>';
+    print '<p style="margin:0 0 6px 0"><strong>'.syncodooText('Version', 'Versie').' :</strong> '.htmlspecialchars($moduleVersion).'</p>';
     print '<p style="margin:0"><strong>'.syncodooText('Statut', 'Status').' :</strong> '.syncodooText('experimental', 'experimenteel').'</p>';
     print '</div>';
 
@@ -184,13 +136,8 @@ if ($tab === 'dashboard') {
 // TAB : OVER
 // ════════════════════════════════════════════════════════
 if ($tab === 'about') {
-    $_syncoActiveLang = $_SESSION['syncodoo_lang'] ?? (strpos(strtolower((string) ($langs->defaultlang ?? '')), 'nl') === 0 ? 'nl' : 'fr');
     $_syncoBase = dol_buildpath('/syncodoo/index.php', 1).'?tab=about';
-    print '<div style="text-align:right;margin:0 0 10px 0;font-size:0.88em">';
-    print '<span style="color:#6c757d;margin-right:4px">'.syncodooText('Langue :', 'Taal:').'</span>';
-    print '<a href="'.$_syncoBase.'&set_lang=fr" style="padding:2px 10px;text-decoration:none;border-radius:3px 0 0 3px;border:1px solid #ccc;'.($_syncoActiveLang === 'fr' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#f8f9fa;color:#495057').'">FR</a>';
-    print '<a href="'.$_syncoBase.'&set_lang=nl" style="padding:2px 10px;text-decoration:none;border-radius:0 3px 3px 0;border:1px solid #ccc;border-left:none;'.($_syncoActiveLang === 'nl' ? 'background:#1f8f43;color:#fff;font-weight:700;border-color:#1f8f43' : 'background:#f8f9fa;color:#495057').'">NL</a>';
-    print '</div>';
+    syncodoo_render_lang_switcher($_syncoBase);
 
     print '<div class="syncodoo-about-box">';
     print '<div style="margin-bottom:14px">';
@@ -236,11 +183,11 @@ if ($tab === 'about') {
     ];
     foreach ($params as $const => $label) {
         $val = $conf->global->$const ?? '';
-        if ($const === 'SYNCODOO_ODOO_PASSWORD' && empty($val)) {
-            $val = $conf->global->SYNCODOO_ODOO_PASS ?? '';
+        if ($const === 'SYNCODOO_ODOO_PASSWORD') {
+            $val = syncodoo_get_secret_from_conf($conf, 'SYNCODOO_ODOO_PASSWORD', ['SYNCODOO_ODOO_PASS']);
         }
         if ($const === 'SYNCODOO_DOLI_APIKEY') {
-            $val = !empty($user->api_key) ? $user->api_key : ($conf->global->SYNCODOO_DOLI_APIKEY ?? '');
+            $val = !empty($user->api_key) ? $user->api_key : syncodoo_get_secret_from_conf($conf, 'SYNCODOO_DOLI_APIKEY');
         }
         $ok = !empty($val);
         $ico = $ok ? 'OK' : 'KO';

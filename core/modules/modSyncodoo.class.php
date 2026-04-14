@@ -4,6 +4,8 @@
  */
 
 include_once DOL_DOCUMENT_ROOT.'/core/modules/DolibarrModules.class.php';
+require_once DOL_DOCUMENT_ROOT.'/custom/syncodoo/core/classes/SyncSchemaMigrator.class.php';
+require_once DOL_DOCUMENT_ROOT.'/custom/syncodoo/core/lib/syncodoo_version.lib.php';
 
 /**
  *  Description and activation class for module SyncOdoo
@@ -49,7 +51,7 @@ class modSyncodoo extends DolibarrModules
 		$this->editor_url = 'https://paypal.me/HeliB0t';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '0.3.0';
+		$this->version = SYNCODOO_MODULE_VERSION;
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -135,14 +137,16 @@ class modSyncodoo extends DolibarrModules
 			1 => array('SYNCODOO_ODOO_DB', 'chaine', 'odoo_db', 'Nom de la base de données Odoo', 1, 'current', 1),
 			2 => array('SYNCODOO_ODOO_USER', 'chaine', 'admin', 'Utilisateur Odoo pour la connexion XML-RPC', 1, 'current', 1),
 			3 => array('SYNCODOO_ODOO_PASSWORD', 'chaine', '', 'Mot de passe Odoo (stocké chiffré)', 0, 'current', 1),
-			4 => array('SYNCODOO_DOLI_APIKEY', 'chaine', '', 'Clé API Dolibarr (générée dans Accueil > Sécurité)', 0, 'current', 1),
-			5 => array('SYNCODOO_LIMIT', 'chaine', '500', 'Nombre maximum d\'enregistrements récupérés par appel API', 1, 'current', 1),
-			6 => array('SYNCODOO_LOG_LEVEL', 'chaine', 'INFO', 'Niveau de log : DEBUG, INFO, WARNING, ERROR', 1, 'current', 1),
-			7 => array('SYNCODOO_BANK_SYNC_ENABLED', 'chaine', '0', 'Activer la synchronisation des transactions bancaires', 1, 'current', 1),
-			8 => array('SYNCODOO_ODOO_BANK_JOURNAL', 'chaine', '', 'Code, nom ou identifiant numérique du journal bancaire Odoo', 1, 'current', 1),
-			9 => array('SYNCODOO_DOLI_BANK_ACCOUNT_ID', 'chaine', '', 'Identifiant du compte bancaire Dolibarr cible', 1, 'current', 1),
-			10 => array('SYNCODOO_BANK_SYNC_DIRECTION', 'chaine', 'both', 'Sens de synchronisation bancaire: odoo_to_dolibarr, dolibarr_to_odoo, both', 1, 'current', 1),
-			11 => array('SYNCODOO_BANK_SYNC_START_DATE', 'chaine', '', 'Date minimale AAAA-MM-JJ pour la synchronisation bancaire', 1, 'current', 1),
+			4 => array('SYNCODOO_ODOO_PASSWORD_ENC', 'chaine', '', 'Mot de passe Odoo chiffré (v2)', 0, 'current', 1),
+			5 => array('SYNCODOO_DOLI_APIKEY', 'chaine', '', 'Clé API Dolibarr (générée dans Accueil > Sécurité)', 0, 'current', 1),
+			6 => array('SYNCODOO_DOLI_APIKEY_ENC', 'chaine', '', 'Clé API Dolibarr de secours chiffrée (v2)', 0, 'current', 1),
+			7 => array('SYNCODOO_LIMIT', 'chaine', '500', 'Nombre maximum d\'enregistrements récupérés par appel API', 1, 'current', 1),
+			8 => array('SYNCODOO_LOG_LEVEL', 'chaine', 'INFO', 'Niveau de log : DEBUG, INFO, WARNING, ERROR', 1, 'current', 1),
+			9 => array('SYNCODOO_BANK_SYNC_ENABLED', 'chaine', '0', 'Activer la synchronisation des transactions bancaires', 1, 'current', 1),
+			10 => array('SYNCODOO_ODOO_BANK_JOURNAL', 'chaine', '', 'Code, nom ou identifiant numérique du journal bancaire Odoo', 1, 'current', 1),
+			11 => array('SYNCODOO_DOLI_BANK_ACCOUNT_ID', 'chaine', '', 'Identifiant du compte bancaire Dolibarr cible', 1, 'current', 1),
+			12 => array('SYNCODOO_BANK_SYNC_DIRECTION', 'chaine', 'both', 'Sens de synchronisation bancaire: odoo_to_dolibarr, dolibarr_to_odoo, both', 1, 'current', 1),
+			13 => array('SYNCODOO_BANK_SYNC_START_DATE', 'chaine', '', 'Date minimale AAAA-MM-JJ pour la synchronisation bancaire', 1, 'current', 1),
 		);
 
 		// Array to add new pages in new tabs
@@ -355,36 +359,14 @@ class modSyncodoo extends DolibarrModules
 				OR (type = 'top' AND mainmenu <> 'syncodoo')
 			)";
 
-		// Table de log
-		$sql[] = "CREATE TABLE IF NOT EXISTS llx_syncodoo_log (
-			rowid INT NOT NULL AUTO_INCREMENT,
-			datec DATETIME NOT NULL,
-			level VARCHAR(10) NOT NULL DEFAULT 'INFO',
-			direction VARCHAR(30) NOT NULL DEFAULT '',
-			entity_type VARCHAR(30) NOT NULL DEFAULT '',
-			entity_ref VARCHAR(100) NOT NULL DEFAULT '',
-			message TEXT,
-			PRIMARY KEY (rowid),
-			INDEX idx_syncodoo_log_datec (datec),
-			INDEX idx_syncodoo_log_level (level)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
-		$sql[] = "CREATE TABLE IF NOT EXISTS llx_syncodoo_bank_map (
-			rowid INT NOT NULL AUTO_INCREMENT,
-			datec DATETIME NOT NULL,
-			tms TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			odoo_transaction_id INT NULL DEFAULT NULL,
-			dolibarr_bank_line_id INT NULL DEFAULT NULL,
-			dolibarr_bank_account_id INT NULL DEFAULT NULL,
-			odoo_journal_id INT NULL DEFAULT NULL,
-			sync_direction VARCHAR(20) NOT NULL DEFAULT '',
-			odoo_write_date DATETIME NULL DEFAULT NULL,
-			PRIMARY KEY (rowid),
-			UNIQUE KEY uk_syncodoo_bank_map_odoo (odoo_transaction_id),
-			UNIQUE KEY uk_syncodoo_bank_map_doli (dolibarr_bank_line_id),
-			INDEX idx_syncodoo_bank_map_account (dolibarr_bank_account_id),
-			INDEX idx_syncodoo_bank_map_journal (odoo_journal_id)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+		$migrator = new SyncSchemaMigrator($this->db);
+		try {
+			$migrator->migrateToLatest();
+		} catch (Throwable $e) {
+			dol_syslog('SyncOdoo init migration error: '.$e->getMessage(), LOG_ERR);
+			return 0;
+		}
 
 		return $this->_init($sql, $options);
 	}
@@ -400,8 +382,10 @@ class modSyncodoo extends DolibarrModules
 	public function remove($options = '')
 	{
 		$sql = array();
-		$sql[] = "DROP TABLE IF EXISTS llx_syncodoo_log";
-		$sql[] = "DROP TABLE IF EXISTS llx_syncodoo_bank_map";
+		$sql[] = "DROP TABLE IF EXISTS ".MAIN_DB_PREFIX."syncodoo_migration";
+		$sql[] = "DROP TABLE IF EXISTS ".MAIN_DB_PREFIX."syncodoo_vat_rate";
+		$sql[] = "DROP TABLE IF EXISTS ".MAIN_DB_PREFIX."syncodoo_log";
+		$sql[] = "DROP TABLE IF EXISTS ".MAIN_DB_PREFIX."syncodoo_bank_map";
 
 		return $this->_remove($sql, $options);
 	}

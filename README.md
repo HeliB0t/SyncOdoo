@@ -1,6 +1,6 @@
 # Module SyncOdoo
 
-Version du module : 0.3.0
+Version du module : voir SYNCODOO_MODULE_VERSION dans core/lib/syncodoo_version.lib.php
 
 Version principale en français sur cette page.
 Nederlandse versie verderop op deze pagina.
@@ -161,9 +161,22 @@ Mode sans ecriture (verification) :
 php /var/www/html/dolibarr/htdocs/custom/syncodoo/tools/simulate_data.php --start=2025-03-29 --end=2026-03-28 --min-per-day=3 --max-per-day=3
 ```
 
+#### Suite de tests minimale
+
+Une suite de tests PHP sans dependance externe est disponible pour valider rapidement les points critiques:
+
+- Tests unitaires: normalisation, fusion et matching
+- Tests d'integration a blanc: scenarios runAll critiques
+
+Execution:
+
+```bash
+php /var/www/html/dolibarr/htdocs/custom/syncodoo/tools/tests/run.php
+```
+
 ### Remarques importantes
 
-- Le module est en version 0.3.0, donc il doit être considéré comme en cours de stabilisation
+- Le module est en cours de stabilisation (version définie par SYNCODOO_MODULE_VERSION)
 - La synchronisation automatique ne remplace pas encore un contrôle fonctionnel sur tous les cas métier
 - Les rapprochements de références entre Dolibarr et Odoo peuvent demander une vérification, surtout sur les factures fournisseurs
 - Les divergences TVA doivent être validées avec attention avant confirmation
@@ -262,7 +275,7 @@ paypal.me/HeliB0t
 SyncOdoo is een Dolibarr-module voor bidirectionele synchronisatie tussen Dolibarr en Odoo.
 De module behandelt vooral derden, verkoopfacturen en aankoopfacturen, met nadruk op gebruikerscontrole, diagnose en manuele oplossing van verschillen.
 
-Huidige versie : 0.3.0
+Huidige versie : zie SYNCODOO_MODULE_VERSION in core/lib/syncodoo_version.lib.php
 Status : experimenteel
 
 Zie ook `CHANGELOG.md` voor de wijzigingen van deze versie.
@@ -375,7 +388,7 @@ Voorbeeld :
 
 ### Belangrijke opmerkingen
 
-- Versie 0.3.0 moet nog als niet volledig gestabiliseerd worden beschouwd
+- De module is nog niet volledig gestabiliseerd (versie via SYNCODOO_MODULE_VERSION)
 - Automatische synchronisatie vervangt nog geen functionele controle in alle scenario's
 - Referentiematching tussen Dolibarr en Odoo kan extra controle vereisen, vooral voor aankoopfacturen
 - Btw-verschillen moeten zorgvuldig worden gevalideerd
@@ -434,7 +447,7 @@ paypal.me/HeliB0t
 SyncOdoo is a Dolibarr module for bidirectional synchronization between Dolibarr and Odoo.
 It mainly handles third parties, customer invoices, and supplier invoices, with a workflow focused on user control, diagnostics, and manual divergence resolution.
 
-Current version: 0.3.0
+Current version: see SYNCODOO_MODULE_VERSION in core/lib/syncodoo_version.lib.php
 Status: experimental
 
 See `CHANGELOG.md` for the version history of the current branch.
@@ -547,7 +560,7 @@ Example:
 
 ### Important notes
 
-- Version 0.3.0 should still be considered not fully stabilized
+- The module should still be considered not fully stabilized (version is defined by SYNCODOO_MODULE_VERSION)
 - Automatic synchronization does not yet replace business validation in every scenario
 - Reference matching between Dolibarr and Odoo may require extra review, especially for supplier invoices
 - VAT divergences should be checked carefully before confirmation
