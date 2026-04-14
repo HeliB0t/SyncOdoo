@@ -940,7 +940,7 @@ class SyncOdoo
                     ['res_id', '=', $odooId],
                     ['type', '=', 'binary'],
                 ],
-                ['id', 'name', 'datas_fname', 'mimetype', 'datas'],
+                ['id', 'name', 'mimetype', 'datas'],
             ]
         );
 
@@ -951,7 +951,7 @@ class SyncOdoo
         $preferred = null;
         foreach ($attachments as $attachment) {
             $mimetype = strtolower(trim((string) ($attachment['mimetype'] ?? '')));
-            $filename = strtolower(trim((string) (($attachment['datas_fname'] ?? '') ?: ($attachment['name'] ?? ''))));
+            $filename = strtolower(trim((string) ($attachment['name'] ?? '')));
             $isPdf = ($mimetype === 'application/pdf' || substr($filename, -4) === '.pdf');
 
             if ($isPdf) {
@@ -972,7 +972,7 @@ class SyncOdoo
             $reloaded = $this->odooCallPublic(
                 'ir.attachment',
                 'read',
-                [[(int) ($preferred['id'] ?? 0)], ['id', 'name', 'datas_fname', 'mimetype', 'datas']]
+                [[(int) ($preferred['id'] ?? 0)], ['id', 'name', 'mimetype', 'datas']]
             );
             if (!empty($reloaded[0])) {
                 $preferred = $reloaded[0];
@@ -1002,7 +1002,7 @@ class SyncOdoo
             throw new Exception('Création du répertoire de documents impossible: '.$dir);
         }
 
-        $baseName = trim((string) (($attachment['datas_fname'] ?? '') ?: ($attachment['name'] ?? '')));
+        $baseName = trim((string) ($attachment['name'] ?? ''));
         if ($baseName === '') {
             $baseName = 'odoo-invoice-attachment-'.$dolInvoiceRef.'.pdf';
         }
@@ -3065,9 +3065,10 @@ class SyncOdoo
             if ($hasChanges) {
                 $res = $societe->update($societe->id, $user);
                 if ($res <= 0) {
-                    throw new Exception('Erreur maj Dolibarr: '.$this->getDolibarrObjectError($societe));
+                    $this->log('WARNING', 'sync', 'thirdparty', $odoo['name'], 'Mise à jour tiers Dolibarr échouée (non bloquant): '.$this->getDolibarrObjectError($societe));
+                } else {
+                    $this->log('INFO', 'sync', 'thirdparty', $odoo['name'], 'Mise à jour Dolibarr depuis Odoo');
                 }
-                $this->log('INFO', 'sync', 'thirdparty', $odoo['name'], 'Mise à jour Dolibarr depuis Odoo');
             }
             return (int) $societe->id;
         } else {
