@@ -3,7 +3,7 @@
 Module500002Name = SyncOdoo
 Module500002Desc = Bidirectionele synchronisatie Dolibarr ↔ Odoo
 
-SyncOdoo               = Sync Odoo
+SyncOdoo               = SyncOdoo
 Journal                = Logboek
 Configuration          = Instellingen
 Divergences            = Divergenties

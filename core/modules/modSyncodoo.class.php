@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2024  Ferme des Courpas
+/* Copyright (C) 2024  HeliB0t
  * Module : modsyncodoo — Synchronisation Dolibarr ↔ Odoo
  */
 
@@ -45,11 +45,11 @@ class modSyncodoo extends DolibarrModules
 		$this->descriptionlong = "Synchroniseert relaties en facturen tussen Dolibarr en Odoo, met detectie van divergenties en update-acties.";
 
 		// Author
-		$this->editor_name = 'Ferme des Courpas';
-		$this->editor_url = 'https://fermedescourpas.odoo.com/';
+		$this->editor_name = 'HeliB0t';
+		$this->editor_url = 'https://paypal.me/HeliB0t';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '0.1.0';
+		$this->version = '0.3.0';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -138,6 +138,11 @@ class modSyncodoo extends DolibarrModules
 			4 => array('SYNCODOO_DOLI_APIKEY', 'chaine', '', 'Clé API Dolibarr (générée dans Accueil > Sécurité)', 0, 'current', 1),
 			5 => array('SYNCODOO_LIMIT', 'chaine', '500', 'Nombre maximum d\'enregistrements récupérés par appel API', 1, 'current', 1),
 			6 => array('SYNCODOO_LOG_LEVEL', 'chaine', 'INFO', 'Niveau de log : DEBUG, INFO, WARNING, ERROR', 1, 'current', 1),
+			7 => array('SYNCODOO_BANK_SYNC_ENABLED', 'chaine', '0', 'Activer la synchronisation des transactions bancaires', 1, 'current', 1),
+			8 => array('SYNCODOO_ODOO_BANK_JOURNAL', 'chaine', '', 'Code, nom ou identifiant numérique du journal bancaire Odoo', 1, 'current', 1),
+			9 => array('SYNCODOO_DOLI_BANK_ACCOUNT_ID', 'chaine', '', 'Identifiant du compte bancaire Dolibarr cible', 1, 'current', 1),
+			10 => array('SYNCODOO_BANK_SYNC_DIRECTION', 'chaine', 'both', 'Sens de synchronisation bancaire: odoo_to_dolibarr, dolibarr_to_odoo, both', 1, 'current', 1),
+			11 => array('SYNCODOO_BANK_SYNC_START_DATE', 'chaine', '', 'Date minimale AAAA-MM-JJ pour la synchronisation bancaire', 1, 'current', 1),
 		);
 
 		// Array to add new pages in new tabs
@@ -364,6 +369,23 @@ class modSyncodoo extends DolibarrModules
 			INDEX idx_syncodoo_log_level (level)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
+		$sql[] = "CREATE TABLE IF NOT EXISTS llx_syncodoo_bank_map (
+			rowid INT NOT NULL AUTO_INCREMENT,
+			datec DATETIME NOT NULL,
+			tms TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			odoo_transaction_id INT NULL DEFAULT NULL,
+			dolibarr_bank_line_id INT NULL DEFAULT NULL,
+			dolibarr_bank_account_id INT NULL DEFAULT NULL,
+			odoo_journal_id INT NULL DEFAULT NULL,
+			sync_direction VARCHAR(20) NOT NULL DEFAULT '',
+			odoo_write_date DATETIME NULL DEFAULT NULL,
+			PRIMARY KEY (rowid),
+			UNIQUE KEY uk_syncodoo_bank_map_odoo (odoo_transaction_id),
+			UNIQUE KEY uk_syncodoo_bank_map_doli (dolibarr_bank_line_id),
+			INDEX idx_syncodoo_bank_map_account (dolibarr_bank_account_id),
+			INDEX idx_syncodoo_bank_map_journal (odoo_journal_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
 		return $this->_init($sql, $options);
 	}
 
@@ -379,6 +401,7 @@ class modSyncodoo extends DolibarrModules
 	{
 		$sql = array();
 		$sql[] = "DROP TABLE IF EXISTS llx_syncodoo_log";
+		$sql[] = "DROP TABLE IF EXISTS llx_syncodoo_bank_map";
 
 		return $this->_remove($sql, $options);
 	}

@@ -1,38 +1,16 @@
 # Language file — SyncOdoo — fr_FR
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-ActionIrreversible     = Deze actie is onomkeerbaar. Doorgaan?ToutDeselectionner     = Alles deselecterenToutSelectionner       = Alles selecterenAppliquerSelection     = Selectie toepassenArchiverDolibarr       = Archiveren in DolibarrArchiverOdoo           = Archiveren in OdooSupprimerDolibarr      = Verwijderen uit DolibarrSupprimerOdoo          = Annuleren in OdooDivergencesDetectees   = divergentie(s) gedetecteerd.AucuneDivergence       = Geen divergenties gedetecteerd — systemen zijn gesynchroniseerd.GestionDivergences     = Beheer van divergentiesSyncErreur             = Er is een fout opgetreden tijdens de synchronisatie.SyncTerminee           = Synchronisatie voltooid.ConfigSauvegardee      = Instellingen succesvol opgeslagen.LancerSync             = Synchronisatie uitvoerenDivergences            = DivergentiesConfiguration          = InstellingenJournal                = LogboekSyncOdoo               = Sync OdooModule500002Desc = Bidirectionele synchronisatie Dolibarr ↔ OdooModule500002Name = SyncOdooModule500002Name = SyncOdoo
+Module500002Name = SyncOdoo
 Module500002Desc = Synchronisation bidirectionnelle Dolibarr ↔ Odoo
 
-SyncOdoo               = Sync Odoo
+SyncOdoo               = SyncOdoo
 Journal                = Journal
 Configuration          = Configuration
 Divergences            = Divergences
 LancerSync             = Lancer la synchronisation
 ConfigSauvegardee      = Configuration sauvegardée avec succès.
 SyncTerminee           = Synchronisation terminée.
-SyncErreur             = Une erreur s'est produite lors de la synchronisation.
+SyncErreur             = Une erreur est survenue lors de la synchronisation.
 GestionDivergences     = Gestion des divergences
 AucuneDivergence       = Aucune divergence détectée — les systèmes sont synchronisés.
 DivergencesDetectees   = divergence(s) détectée(s).
@@ -44,5 +22,3 @@ AppliquerSelection     = Appliquer la sélection
 ToutSelectionner       = Tout sélectionner
 ToutDeselectionner     = Tout désélectionner
 ActionIrreversible     = Cette action est irréversible. Continuer ?
-SyncTerminee           = Synchronisation terminée.
-SyncErreur             = Une erreur est survenue lors de la synchronisation.

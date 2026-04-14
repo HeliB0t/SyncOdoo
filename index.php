@@ -43,8 +43,8 @@ function syncodooText(string $fr, string $nl): string
 }
 
 $moduleName = 'SyncOdoo';
-$moduleVersion = '0.1.0';
-$paypalUrl = 'https://www.paypal.com/donate/?hosted_button_id=QEUQAA6NN6KCA';
+$moduleVersion = '0.3.0';
+$paypalUrl = 'https://www.paypal.com/donate/?business=RBGCKNQF62C3E&no_recurring=0&currency_code=EUR';
 
 // ── Actions ──────────────────────────────────────────────
 $result  = null;
@@ -147,8 +147,8 @@ if ($tab === 'dashboard') {
 
     print '<div style="border:1px solid #e1e7ef;border-radius:8px;padding:14px;background:#fff;margin:0 0 12px 0;line-height:1.5">';
     print '<p style="margin:0 0 8px 0"><strong>'.syncodooText('SyncOdoo synchronise Dolibarr et Odoo dans les deux sens.', 'SyncOdoo synchroniseert Dolibarr en Odoo in beide richtingen.').'</strong></p>';
-    print '<p style="margin:0 0 8px 0">'.syncodooText('Le module couvre surtout les tiers, les factures clients et les factures fournisseurs avec une approche orientée controle utilisateur.', 'De module behandelt vooral relaties, verkoopfacturen en aankoopfacturen met focus op gebruikerscontrole.').'</p>';
-    print '<p style="margin:0 0 6px 0"><strong>'.syncodooText('Version', 'Versie').' :</strong> 0.1.0</p>';
+    print '<p style="margin:0 0 8px 0">'.syncodooText('Le module couvre surtout les tiers, les factures clients, les factures fournisseurs et, si configuree, la synchronisation des transactions bancaires avec une approche orientee controle utilisateur.', 'De module behandelt vooral relaties, verkoopfacturen, aankoopfacturen en, indien ingesteld, de synchronisatie van banktransacties met focus op gebruikerscontrole.').'</p>';
+    print '<p style="margin:0 0 6px 0"><strong>'.syncodooText('Version', 'Versie').' :</strong> 0.3.0</p>';
     print '<p style="margin:0"><strong>'.syncodooText('Statut', 'Status').' :</strong> '.syncodooText('experimental', 'experimenteel').'</p>';
     print '</div>';
 
@@ -160,6 +160,23 @@ if ($tab === 'dashboard') {
         print '<div class="ok">'.syncodooText('Synchronisation terminee en '.$elapsed.'s.', 'Synchronisatie voltooid in '.$elapsed.'s.').'</div>';
     } elseif ($result === 'error') {
         print '<div class="error">'.syncodooText('Erreur critique pendant la synchronisation. Consultez le journal.', 'Kritieke fout tijdens de synchronisatie. Raadpleeg het logboek.').'</div>';
+    }
+
+    if (is_array($stats)) {
+        $visibleStats = array_filter($stats, function ($value, $key) {
+            return ((int) $value > 0 && $key !== 'erreurs') || ($key === 'erreurs' && (int) $value > 0);
+        }, ARRAY_FILTER_USE_BOTH);
+
+        if (!empty($visibleStats)) {
+            print '<div style="border:1px solid #e1e7ef;border-radius:8px;padding:14px;background:#fff;margin:12px 0 0 0">';
+            print '<strong>'.syncodooText('Resume de la derniere execution', 'Samenvatting van de laatste uitvoering').'</strong>';
+            print '<table class="noborder" style="width:100%;margin-top:8px"><tbody>';
+            foreach ($visibleStats as $key => $value) {
+                print '<tr><td>'.htmlspecialchars($key).'</td><td style="text-align:right;font-weight:600">'.((int) $value).'</td></tr>';
+            }
+            print '</tbody></table>';
+            print '</div>';
+        }
     }
 }
 
@@ -196,6 +213,14 @@ if ($tab === 'about') {
     print '<li><strong>'.syncodooText('Améliorations :', 'Verbeteringen:').'</strong> '.syncodooText('N\'hésitez pas à modifier le code ou partager vos remarques.', 'Voel u vrij om code aan te passen of feedback te delen.').'</li>';
     print '<li><strong>'.syncodooText('Soutien:', 'Steun :').'</strong> '.syncodooText('Si ce module vous aide, vous pouvez soutenir mon lancement via ce ', 'Als deze module uw cashflow helpt, kunt u mijn opstart steunen via deze ').'<a href="'.htmlspecialchars($paypalUrl).'" target="_blank" rel="noopener noreferrer">'.syncodooText('lien PayPal', 'PayPal-link').'</a>.</li>';
     print '</ul>';
+    print '<p style="margin:0 0 8px 0">'.syncodooText('Don direct :', 'Directe donatie:').'</p>';
+    print '<form action="https://www.paypal.com/donate" method="post" target="_top" style="margin:0 0 12px 0">';
+    print '<input type="hidden" name="business" value="RBGCKNQF62C3E">';
+    print '<input type="hidden" name="no_recurring" value="0">';
+    print '<input type="hidden" name="currency_code" value="EUR">';
+    print '<input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" border="0" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Donate with PayPal button">';
+    print '<img alt="" border="0" src="https://www.paypal.com/en_BE/i/scr/pixel.gif" width="1" height="1">';
+    print '</form>';
     print '<p style="margin:0 0 14px 0"><em>'.syncodooText('Optimisons ensemble notre comptabilité sans coût de licence.', 'Laten we samen onze boekhouding optimaliseren zonder licentiekosten.').'</em></p>';
 
     print '<div class="div-table-responsive">';

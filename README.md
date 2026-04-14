@@ -1,6 +1,6 @@
 # Module SyncOdoo
 
-Version du module : 0.1.0
+Version du module : 0.3.0
 
 Version principale en français sur cette page.
 Nederlandse versie verderop op deze pagina.
@@ -12,7 +12,9 @@ English version further below on this page.
 
 ### Présentation
 
-SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore tous les cas fonctionnels possibles. Certaines actions doivent encore être confirmées manuellement et certains rapprochements complexes peuvent nécessiter une vérification avant validation.
+SyncOdoo est un module Dolibarr de synchronisation bidirectionnelle entre Dolibarr et Odoo. Il couvre principalement les tiers, les factures clients, les factures fournisseurs et, en option, les transactions bancaires.
+
+Consulter aussi le fichier `CHANGELOG.md` pour l'historique de version de la branche actuelle.
 
 ### Fonctions principales
 
@@ -29,6 +31,7 @@ SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore to
 - Proposition automatique de taux TVA proches avec présélection dans certains cas
 - Choix manuel de référence pour les factures fournisseurs divergentes
 - Import optionnel du fichier de facture Odoo (PDF en priorité) lors de la création dans Dolibarr
+- Synchronisation optionnelle des transactions bancaires entre un journal bancaire Odoo et un compte bancaire Dolibarr
 
 ### Ce que le module sait faire aujourd'hui
 
@@ -54,6 +57,8 @@ SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore to
 - Lister les factures clients présentes seulement dans Dolibarr
 - Détecter les différences de montants HTVA, TVA et TVAC
 - Permettre de conserver la version Odoo ou Dolibarr selon le besoin
+- Permettre de choisir la version Odoo ou Dolibarr selon le contexte
+- Vérifier la cohérence TVA avant modification des montants
 
 #### Divergences factures fournisseurs
 
@@ -64,12 +69,22 @@ SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore to
 - Laisser l'utilisateur choisir de conserver Odoo ou Dolibarr
 - Vérifier la cohérence TVA avant écrasement des montants
 
+
 #### Vérification TVA
 
 - Détecter les nouveaux taux TVA observés par pays
 - Demander une confirmation manuelle quand un taux n'est pas encore connu
 - Proposer automatiquement des approximations utiles comme 20.0, 20.5 ou 21.0
 - Présélectionner un taux proposé quand la valeur observée est suffisamment proche
+
+#### Transactions bancaires
+
+- Synchroniser les lignes de transactions bancaires entre Odoo et Dolibarr
+- Cibler un journal bancaire Odoo précis via son code, son nom ou son identifiant
+- Cibler un compte bancaire Dolibarr précis pour l'import et l'export
+- Eviter les doublons via une table de mapping interne au module
+- Mettre a jour prudemment les lignes deja synchronisees quand elles changent
+- Ignorer les lignes deja rapprochees quand une mise a jour automatique deviendrait risquee
 
 ### Utilisation
 
@@ -97,6 +112,11 @@ SyncOdoo est un module Dolibarr de synpeux tu mettre lle ne couvre pas encore to
 - Mot de passe Odoo ou clé API Odoo
 - Clé API Dolibarr uniquement en secours si la clé utilisateur n'est pas détectée automatiquement
 - Option d'import du fichier de facture Odoo vers les documents Dolibarr (facultatif)
+- Activation de la synchronisation bancaire (facultatif)
+- Journal bancaire Odoo a synchroniser (code, nom ou identifiant)
+- Compte bancaire Dolibarr cible pour la synchronisation bancaire
+- Sens de synchronisation bancaire: Odoo vers Dolibarr, Dolibarr vers Odoo, ou bidirectionnel
+- Date de depart facultative pour limiter les transactions bancaires reprises
 
 #### Cas Odoo Online
 
@@ -125,14 +145,32 @@ Exemple de crontab système :
 0 * * * * php /var/www/html/dolibarr/htdocs/custom/syncodoo/cron/sync.php >> /var/log/sync-doli-odoo.log 2>&1
 ```
 
+#### Simulation de donnees (test charge)
+
+Le module inclut un script CLI pour generer des clients/fournisseurs et des factures des deux cotes (Dolibarr + Odoo) avec TVA aleatoire a 6% ou 21%.
+
+Exemple sur un an avec 3 factures minimum par jour :
+
+```bash
+php /var/www/html/dolibarr/htdocs/custom/syncodoo/tools/simulate_data.php --execute --start=2025-03-29 --end=2026-03-28 --min-per-day=3 --max-per-day=3 --customers=20 --suppliers=20
+```
+
+Mode sans ecriture (verification) :
+
+```bash
+php /var/www/html/dolibarr/htdocs/custom/syncodoo/tools/simulate_data.php --start=2025-03-29 --end=2026-03-28 --min-per-day=3 --max-per-day=3
+```
+
 ### Remarques importantes
 
-- Le module est en version 0.1.0, donc il doit être considéré comme en cours de stabilisation
+- Le module est en version 0.3.0, donc il doit être considéré comme en cours de stabilisation
 - La synchronisation automatique ne remplace pas encore un contrôle fonctionnel sur tous les cas métier
 - Les rapprochements de références entre Dolibarr et Odoo peuvent demander une vérification, surtout sur les factures fournisseurs
 - Les divergences TVA doivent être validées avec attention avant confirmation
 - Les montants de facture ne doivent pas être écrasés sans vérifier la cohérence comptable
 - Les actions manuelles depuis l'onglet Divergences restent le mode recommandé pour les cas ambigus
+- Pour la synchronisation bancaire, il est recommandé de commencer avec une date de depart recente afin d'eviter un import historique trop large
+- Les lignes bancaires deja rapprochees ne sont pas forcees en mise a jour automatique
 
 ### Prérequis techniques
 
@@ -203,6 +241,18 @@ Vérifier que l'API REST Dolibarr est activée et que la clé API disponible est
 - /var/log/sync-doli-odoo.log
 - logs Apache ou PHP du serveur
 
+### Soutenir le projet
+
+<form action="https://www.paypal.com/donate" method="post" target="_top" style="margin:0 0 12px 0">
+   <input type="hidden" name="business" value="RBGCKNQF62C3E">
+   <input type="hidden" name="no_recurring" value="0">
+   <input type="hidden" name="currency_code" value="EUR">
+   <input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" border="0" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Donate with PayPal button">
+   <img alt="" border="0" src="https://www.paypal.com/en_BE/i/scr/pixel.gif" width="1" height="1">
+</form>
+
+paypal.me/HeliB0t
+
 ---
 
 ## Nederlands
@@ -212,8 +262,10 @@ Vérifier que l'API REST Dolibarr est activée et que la clé API disponible est
 SyncOdoo is een Dolibarr-module voor bidirectionele synchronisatie tussen Dolibarr en Odoo.
 De module behandelt vooral derden, verkoopfacturen en aankoopfacturen, met nadruk op gebruikerscontrole, diagnose en manuele oplossing van verschillen.
 
-Huidige versie : 0.1.0
+Huidige versie : 0.3.0
 Status : experimenteel
+
+Zie ook `CHANGELOG.md` voor de wijzigingen van deze versie.
 
 Deze versie is bruikbaar, maar dekt nog niet alle functionele scenario's. Sommige acties vereisen nog manuele bevestiging en bepaalde complexe matches moeten vooraf worden gecontroleerd.
 
@@ -323,7 +375,7 @@ Voorbeeld :
 
 ### Belangrijke opmerkingen
 
-- Versie 0.1.0 moet nog als niet volledig gestabiliseerd worden beschouwd
+- Versie 0.3.0 moet nog als niet volledig gestabiliseerd worden beschouwd
 - Automatische synchronisatie vervangt nog geen functionele controle in alle scenario's
 - Referentiematching tussen Dolibarr en Odoo kan extra controle vereisen, vooral voor aankoopfacturen
 - Btw-verschillen moeten zorgvuldig worden gevalideerd
@@ -361,6 +413,18 @@ Controleer de naamresolutie van de Odoo-host op de server.
 
 Controleer of de Dolibarr REST API actief is en of de beschikbare API-sleutel geldig is.
 
+### Steun het project
+
+<form action="https://www.paypal.com/donate" method="post" target="_top" style="margin:0 0 12px 0">
+   <input type="hidden" name="business" value="RBGCKNQF62C3E">
+   <input type="hidden" name="no_recurring" value="0">
+   <input type="hidden" name="currency_code" value="EUR">
+   <input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" border="0" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Donate with PayPal button">
+   <img alt="" border="0" src="https://www.paypal.com/en_BE/i/scr/pixel.gif" width="1" height="1">
+</form>
+
+paypal.me/HeliB0t
+
 ---
 
 ## English
@@ -370,8 +434,10 @@ Controleer of de Dolibarr REST API actief is en of de beschikbare API-sleutel ge
 SyncOdoo is a Dolibarr module for bidirectional synchronization between Dolibarr and Odoo.
 It mainly handles third parties, customer invoices, and supplier invoices, with a workflow focused on user control, diagnostics, and manual divergence resolution.
 
-Current version: 0.1.0
+Current version: 0.3.0
 Status: experimental
+
+See `CHANGELOG.md` for the version history of the current branch.
 
 This version is usable, but it does not yet cover every functional case. Some actions still require manual confirmation and some complex matches should be checked before validation.
 
@@ -481,7 +547,7 @@ Example:
 
 ### Important notes
 
-- Version 0.1.0 should still be considered not fully stabilized
+- Version 0.3.0 should still be considered not fully stabilized
 - Automatic synchronization does not yet replace business validation in every scenario
 - Reference matching between Dolibarr and Odoo may require extra review, especially for supplier invoices
 - VAT divergences should be checked carefully before confirmation
@@ -518,3 +584,17 @@ Check host name resolution from the server.
 #### Dolibarr API error
 
 Check that the Dolibarr REST API is enabled and that the available API key is valid.
+
+---
+
+### Support the Project
+
+<form action="https://www.paypal.com/donate" method="post" target="_top" style="margin:0 0 12px 0">
+   <input type="hidden" name="business" value="RBGCKNQF62C3E">
+   <input type="hidden" name="no_recurring" value="0">
+   <input type="hidden" name="currency_code" value="EUR">
+   <input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" border="0" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Donate with PayPal button">
+   <img alt="" border="0" src="https://www.paypal.com/en_BE/i/scr/pixel.gif" width="1" height="1">
+</form>
+
+paypal.me/HeliB0t

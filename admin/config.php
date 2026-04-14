@@ -12,6 +12,7 @@ if (!$res) {
 }
 
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
+require_once __DIR__.'/../core/classes/SyncOdoo.class.php';
 
 if (empty($conf->syncodoo->enabled)) {
     accessforbidden(syncodooText('Module SyncOdoo desactive', 'SyncOdoo-module uitgeschakeld'));
@@ -56,16 +57,24 @@ if ($action === 'save') {
         'SYNCODOO_LIMIT'       => (int)GETPOST('SYNCODOO_LIMIT',  'int'),
         'SYNCODOO_LOG_LEVEL'   => GETPOST('SYNCODOO_LOG_LEVEL',   'alpha'),
         'SYNCODOO_IMPORT_INVOICE_FILE' => (int) GETPOST('SYNCODOO_IMPORT_INVOICE_FILE', 'int'),
+        'SYNCODOO_EXPORT_INVOICE_FILE' => (int) GETPOST('SYNCODOO_EXPORT_INVOICE_FILE', 'int'),
+        'SYNCODOO_BANK_SYNC_ENABLED' => (int) GETPOST('SYNCODOO_BANK_SYNC_ENABLED', 'int'),
+        'SYNCODOO_ODOO_BANK_JOURNAL' => trim(GETPOST('SYNCODOO_ODOO_BANK_JOURNAL', 'restricthtml')),
+        'SYNCODOO_DOLI_BANK_ACCOUNT_ID' => (int) GETPOST('SYNCODOO_DOLI_BANK_ACCOUNT_ID', 'int'),
+        'SYNCODOO_BANK_SYNC_DIRECTION' => GETPOST('SYNCODOO_BANK_SYNC_DIRECTION', 'alpha'),
+        'SYNCODOO_BANK_SYNC_START_DATE' => trim(GETPOST('SYNCODOO_BANK_SYNC_START_DATE', 'restricthtml')),
     ];
 
     foreach ($fields as $const => $val) {
-        if ($val !== '') {
-            dolibarr_set_const($db, $const, $val, 'chaine', 1, '', $conf->entity);
+        if ($const === 'SYNCODOO_ODOO_PASSWORD' && $val === '') {
+            continue;
+        }
 
-            // Keep old key in sync for backward compatibility with existing deployments.
-            if ($const === 'SYNCODOO_ODOO_PASSWORD') {
-                dolibarr_set_const($db, 'SYNCODOO_ODOO_PASS', $val, 'chaine', 1, '', $conf->entity);
-            }
+        dolibarr_set_const($db, $const, $val, 'chaine', 1, '', $conf->entity);
+
+        // Keep old key in sync for backward compatibility with existing deployments.
+        if ($const === 'SYNCODOO_ODOO_PASSWORD') {
+            dolibarr_set_const($db, 'SYNCODOO_ODOO_PASS', $val, 'chaine', 1, '', $conf->entity);
         }
     }
     setEventMessages(syncodooText('Configuration enregistrée.', 'Instellingen opgeslagen.'), null, 'mesgs');
@@ -150,6 +159,9 @@ $head[4][0] = dol_buildpath('/syncodoo/index.php', 1).'?tab=about';
 $head[4][1] = 'À propos';
 $head[4][2] = 'about';
 print dol_get_fiche_head($head, 'config', 'SyncOdoo', 0, 'refresh');
+
+$syncConfig = new SyncOdoo($db);
+$doliBankAccounts = $syncConfig->getDolibarrBankAccounts();
 
 print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'">';
 print '<input type="hidden" name="token" value="'.newToken().'">';
@@ -239,6 +251,65 @@ print '<tr><td>'.syncodooText('Importer le fichier de facture Odoo', 'Odoo-factu
 print '<td><label><input type="checkbox" name="SYNCODOO_IMPORT_INVOICE_FILE" value="1"'.($importInvoiceFile ? ' checked' : '').'> ';
 print syncodooText('Joindre automatiquement le fichier de facture (PDF en priorite) lors de la creation dans Dolibarr.', 'Factuurbijlage automatisch toevoegen (PDF heeft voorrang) bij creatie in Dolibarr.');
 print '</label></td></tr>';
+
+$exportInvoiceFile = (int) ($conf->global->SYNCODOO_EXPORT_INVOICE_FILE ?? 0);
+print '<tr><td>'.syncodooText('Exporter les documents Dolibarr vers Odoo', 'Dolibarr-documenten exporteren naar Odoo').'</td>';
+print '<td><label><input type="checkbox" name="SYNCODOO_EXPORT_INVOICE_FILE" value="1"'.($exportInvoiceFile ? ' checked' : '').'> ';
+print syncodooText('Copier automatiquement les documents de facture (PDF, images) de Dolibarr vers Odoo lors de la synchronisation.', 'Factuurdocumenten (PDF, afbeeldingen) automatisch kopiëren van Dolibarr naar Odoo bij synchronisatie.');
+print '</label></td></tr>';
+
+print '<tr class="liste_titre"><th colspan="2">'.syncodooText('Synchronisation bancaire', 'Banksynchronisatie').'</th></tr>';
+
+$bankSyncEnabled = (int) ($conf->global->SYNCODOO_BANK_SYNC_ENABLED ?? 0);
+print '<tr><td>'.syncodooText('Activer la synchronisation bancaire', 'Banksynchronisatie activeren').'</td>';
+print '<td><label><input type="checkbox" name="SYNCODOO_BANK_SYNC_ENABLED" value="1"'.($bankSyncEnabled ? ' checked' : '').'> ';
+print syncodooText('Synchroniser les transactions bancaires entre Odoo et Dolibarr.', 'Banktransacties tussen Odoo en Dolibarr synchroniseren.');
+print '</label></td></tr>';
+
+$odooJournal = $conf->global->SYNCODOO_ODOO_BANK_JOURNAL ?? '';
+print '<tr><td>'.syncodooText('Journal bancaire Odoo', 'Odoo-bankjournaal').'</td>';
+print '<td><input type="text" name="SYNCODOO_ODOO_BANK_JOURNAL" class="minwidth300" data-syncodoo-memory="1" value="'.htmlspecialchars($odooJournal).'" placeholder="BNK1 '.syncodooText('ou ID numerique', 'of numerieke ID').'"><br>';
+print '<small class="opacitymedium">'.syncodooText('Accepte le code, le nom ou l\'identifiant numerique du journal bancaire Odoo.', 'Aanvaardt de code, naam of numerieke ID van het Odoo-bankjournaal.').'</small>';
+print '<div class="opacitymedium" style="margin-top:6px;line-height:1.45">'.syncodooText('Resume : Odoo > Comptabilite > Configuration > Journaux > type Banque > ouvrez le journal du compte rapproche, puis copiez son code (ex: BNK1) ici. Alternative : nom exact du journal ou ID technique (mode developpeur).', 'Samenvatting: Odoo > Boekhouding > Configuratie > Journals > type Bank > open het journaal van de afgestemde rekening en kopieer de code (bv. BNK1) hier. Alternatief: exacte naam van het journaal of technische ID (ontwikkelaarsmodus).').'</div></td></tr>';
+
+$selectedBankAccountId = (int) ($conf->global->SYNCODOO_DOLI_BANK_ACCOUNT_ID ?? 0);
+print '<tr><td>'.syncodooText('Compte bancaire Dolibarr', 'Dolibarr-bankrekening').'</td>';
+print '<td><select name="SYNCODOO_DOLI_BANK_ACCOUNT_ID" class="minwidth300" data-syncodoo-memory="1">';
+print '<option value="0">'.syncodooText('Choisir un compte bancaire', 'Kies een bankrekening').'</option>';
+foreach ($doliBankAccounts as $bankAccount) {
+    $label = trim(($bankAccount['ref'] !== '' ? $bankAccount['ref'].' - ' : '').$bankAccount['label']);
+    if (!empty($bankAccount['iban'])) {
+        $label .= ' ('.$bankAccount['iban'].')';
+    }
+    if (!empty($bankAccount['currency_code'])) {
+        $label .= ' ['.$bankAccount['currency_code'].']';
+    }
+    if (!empty($bankAccount['closed'])) {
+        $label .= ' '.syncodooText('(ferme)', '(gesloten)');
+    }
+    $selected = ($selectedBankAccountId === (int) $bankAccount['id']) ? ' selected' : '';
+    print '<option value="'.((int) $bankAccount['id']).'"'.$selected.'>'.htmlspecialchars($label).'</option>';
+}
+print '</select></td></tr>';
+
+$bankDirection = $conf->global->SYNCODOO_BANK_SYNC_DIRECTION ?? 'both';
+print '<tr><td>'.syncodooText('Sens de synchronisation', 'Synchronisatierichting').'</td>';
+print '<td><select name="SYNCODOO_BANK_SYNC_DIRECTION" data-syncodoo-memory="1">';
+$bankDirections = [
+    'odoo_to_dolibarr' => syncodooText('Odoo vers Dolibarr', 'Odoo naar Dolibarr'),
+    'dolibarr_to_odoo' => syncodooText('Dolibarr vers Odoo', 'Dolibarr naar Odoo'),
+    'both' => syncodooText('Bidirectionnelle', 'Bidirectioneel'),
+];
+foreach ($bankDirections as $value => $label) {
+    $selected = ($bankDirection === $value) ? ' selected' : '';
+    print '<option value="'.$value.'"'.$selected.'>'.$label.'</option>';
+}
+print '</select></td></tr>';
+
+$bankStartDate = $conf->global->SYNCODOO_BANK_SYNC_START_DATE ?? '';
+print '<tr><td>'.syncodooText('Date de depart', 'Startdatum').'</td>';
+print '<td><input type="date" name="SYNCODOO_BANK_SYNC_START_DATE" data-syncodoo-memory="1" value="'.htmlspecialchars($bankStartDate).'">';
+print '<br><small class="opacitymedium">'.syncodooText('Limite l\'import aux transactions bancaires a partir de cette date.', 'Beperkt de import tot banktransacties vanaf deze datum.').'</small></td></tr>';
 
 print '</tbody></table>';
 print '<br><button type="submit" class="butAction">'.syncodooText('Enregistrer', 'Opslaan').'</button>';
